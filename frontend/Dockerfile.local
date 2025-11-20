@@ -1,0 +1,63 @@
+# =====================================
+# Dockerfile for LOCAL Development
+# React + TypeScript + Vite Application
+# =====================================
+
+# Stage 1: Build Stage
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci --only=production=false
+
+# Copy source code
+COPY . .
+
+# Build arguments for environment variables
+ARG VITE_COGNITO_DOMAIN
+ARG VITE_COGNITO_CLIENT_ID
+ARG VITE_COGNITO_USER_POOL_ID
+ARG VITE_COGNITO_REGION
+ARG VITE_COGNITO_REDIRECT_URI
+ARG VITE_AGENTCORE_URL
+ARG VITE_ENABLE_GITHUB_INTEGRATION
+ARG VITE_ENABLE_JIRA_INTEGRATION
+ARG VITE_ENVIRONMENT
+
+# Set environment variables for build
+ENV VITE_COGNITO_DOMAIN=${VITE_COGNITO_DOMAIN}
+ENV VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID}
+ENV VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID}
+ENV VITE_COGNITO_REGION=${VITE_COGNITO_REGION}
+ENV VITE_COGNITO_REDIRECT_URI=${VITE_COGNITO_REDIRECT_URI}
+ENV VITE_AGENTCORE_URL=${VITE_AGENTCORE_URL}
+ENV VITE_ENABLE_GITHUB_INTEGRATION=${VITE_ENABLE_GITHUB_INTEGRATION}
+ENV VITE_ENABLE_JIRA_INTEGRATION=${VITE_ENABLE_JIRA_INTEGRATION}
+ENV VITE_ENVIRONMENT=${VITE_ENVIRONMENT}
+
+# Build application
+RUN npm run build
+
+# Stage 2: Production Stage
+FROM nginx:alpine
+
+# Copy LOCAL nginx config (uses docker-compose service names)
+COPY nginx.local.conf /etc/nginx/conf.d/default.conf
+
+# Copy built assets from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
+# Expose port
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

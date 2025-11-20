@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+      "aap-docker": {
+        "command": "docker",
+        "args": [
+          "exec",
+          "-i",
+          "aap-mcp",
+          "python",
+          "/app/mcp/app_mcp.py"
+        ]
+      }
+    }
+  }

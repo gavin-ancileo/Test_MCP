@@ -1,0 +1,80 @@
+{
+  "name": "[TEMPLATE] GitHub Commits Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mcp-server.aap.local:8001/execute",
+        "method": "POST",
+        "bodyParametersJson": "{\"tool_name\": \"github_list_commits\", \"arguments\": {\"hours\": 1}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Get Recent Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.commits && $json.commits.length > 0 }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Updates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "subject": "🔔 GitHub: {{ $json.commits.length }} new commits",
+        "emailType": "html",
+        "message": "<h2>Recent GitHub Activity</h2><p>You have {{ $json.commits.length }} new commits in the last hour.</p><ul>{{ $json.commits.map(c => `<li><strong>${c.repo}</strong>: ${c.message}</li>`).join('') }}</ul>"
+      },
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 200]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{"node": "Get Recent Commits", "type": "main", "index": 0}]]
+    },
+    "Get Recent Commits": {
+      "main": [[{"node": "Has Updates?", "type": "main", "index": 0}]]
+    },
+    "Has Updates?": {
+      "main": [
+        [{"node": "Send Email", "type": "main", "index": 0}],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

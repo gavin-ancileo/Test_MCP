@@ -1,0 +1,53 @@
+{
+  "taskDefinition": "mcp-server-seed-prompts",
+  "cluster": "aap-cluster",
+  "launchType": "FARGATE",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": ["subnet-xxx", "subnet-yyy"],
+      "securityGroups": ["sg-xxx"],
+      "assignPublicIp": "DISABLED"
+    }
+  },
+  "overrides": {
+    "containerOverrides": [
+      {
+        "name": "mcp-server",
+        "command": ["python", "seed-prompts-aws.py"],
+        "environment": [
+          {
+            "name": "DB_HOST",
+            "value": "aap-rds-new.cv2usk6ye3hm.ap-southeast-2.rds.amazonaws.com"
+          },
+          {
+            "name": "DB_PORT",
+            "value": "5432"
+          },
+          {
+            "name": "DB_NAME",
+            "value": "prompts"
+          },
+          {
+            "name": "DB_USER",
+            "value": "AncileoMaster"
+          }
+        ],
+        "secrets": [
+          {
+            "name": "DB_PASSWORD",
+            "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/uat/mcp-server"
+          },
+          {
+            "name": "AWS_ACCESS_KEY_ID",
+            "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/uat/mcp-server"
+          },
+          {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/uat/mcp-server"
+          }
+        ]
+      }
+    ]
+  }
+}
+

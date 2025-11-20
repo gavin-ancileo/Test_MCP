@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Phase 2/3-Ready — Network: 2 public subnets + IGW + base Security Groups'
+
+Parameters:
+  ExportPrefix: { Type: String, Default: aap-poc }
+  VpcCidr:      { Type: String, Default: 10.40.0.0/16 }
+  CreateVpc:
+    Type: String
+    AllowedValues: ["true","false"]
+    Default: "true"
+    Description: Set false to reuse an existing VPC (pass VpcId)
+  VpcId:        { Type: String, Default: "" }
+  SubnetACidr:  { Type: String, Default: 10.40.0.0/24 }
+  SubnetBCidr:  { Type: String, Default: 10.40.1.0/24 }
+
+Conditions:
+  CreateNewVpc: !Equals [!Ref CreateVpc, "true"]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Condition: CreateNewVpc
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-vpc' }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref SubnetACidr
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-public-a' }]
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref SubnetBCidr
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-public-b' }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  AssocPublicA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  AssocPublicB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB 80/443 from internet
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80,  ToPort: 80,  CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-alb-sg' }]
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS accepts only from ALB
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-ecs-sg' }]
+
+  EcsFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Postgres from ECS
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref EcsSecurityGroup }
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-rds-sg' }]
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redis from ECS
+      VpcId: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 6379, ToPort: 6379, SourceSecurityGroupId: !Ref EcsSecurityGroup }
+      Tags: [{ Key: Name, Value: !Sub '${ExportPrefix}-redis-sg' }]
+
+Outputs:
+  VpcIdOut:
+    Value: !If [CreateNewVpc, !Ref VPC, !Ref VpcId]
+    Export: { Name: !Sub '${ExportPrefix}-VpcId' }
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+    Export: { Name: !Sub '${ExportPrefix}-PublicSubnetAId' }
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+    Export: { Name: !Sub '${ExportPrefix}-PublicSubnetBId' }
+  AlbSgId:
+    Value: !Ref AlbSecurityGroup
+    Export: { Name: !Sub '${ExportPrefix}-AlbSgId' }
+  EcsSgId:
+    Value: !Ref EcsSecurityGroup
+    Export: { Name: !Sub '${ExportPrefix}-EcsSgId' }
+  RdsSgId:
+    Value: !Ref RdsSecurityGroup
+    Export: { Name: !Sub '${ExportPrefix}-RdsSgId' }
+  RedisSgId:
+    Value: !Ref RedisSecurityGroup
+    Export: { Name: !Sub '${ExportPrefix}-RedisSgId' }

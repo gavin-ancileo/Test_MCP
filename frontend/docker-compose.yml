@@ -1,0 +1,48 @@
+# =====================================
+# Docker Compose for AAP Enduser
+# Development & Production Setup
+# =====================================
+
+version: '3.8'
+
+services:
+  aap-enduser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # AWS Cognito Configuration
+        VITE_COGNITO_DOMAIN: ${VITE_COGNITO_DOMAIN}
+        VITE_COGNITO_CLIENT_ID: ${VITE_COGNITO_CLIENT_ID}
+        VITE_COGNITO_USER_POOL_ID: ${VITE_COGNITO_USER_POOL_ID}
+        VITE_COGNITO_REGION: ${VITE_COGNITO_REGION}
+        VITE_COGNITO_REDIRECT_URI: ${VITE_COGNITO_REDIRECT_URI}
+        
+        # Backend API Configuration
+        VITE_AGENTCORE_URL: ${VITE_AGENTCORE_URL}
+        
+        # Integration Features
+        VITE_ENABLE_GITHUB_INTEGRATION: ${VITE_ENABLE_GITHUB_INTEGRATION:-true}
+        VITE_ENABLE_JIRA_INTEGRATION: ${VITE_ENABLE_JIRA_INTEGRATION:-true}
+        VITE_ENVIRONMENT: ${VITE_ENVIRONMENT:-production}
+    
+    container_name: aap-enduser
+    
+    ports:
+      - "8080:80"
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - aap-network
+
+networks:
+  aap-network:
+    driver: bridge

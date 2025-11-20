@@ -1,0 +1,5 @@
+{
+    "api_port": 8000,
+    "categories": ["general", "hr", "dev", "qa", "ops"],
+    "database": "../data/prompts.db"
+  }

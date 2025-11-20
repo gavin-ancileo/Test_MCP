@@ -1,0 +1,14 @@
+# GitHub Actions Deployment Trigger
+#
+# This file exists to trigger backend deployment workflows when needed.
+# Modifying this file will trigger the backend workflow path filter.
+#
+# Last updated: 2025-11-10 23:10
+# Reason: Force rebuild to include ALL accumulated backend fixes
+#
+# Fixes included in this deployment:
+# - OAuth timezone fix (commit 52810f7e)
+# - Rollback error fix (commit 5db0b5a5)
+# - KeyError integration fix (commit 2962b134)
+# - Disconnect logging improvements (commit 7d3c2374)
+# - Workflow cache fix (commit ea574512)

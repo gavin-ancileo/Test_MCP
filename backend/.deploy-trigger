@@ -1,0 +1,7 @@
+# Trigger backend deployment
+# Commit: Fix chat completely broken - Remove database ORDER BY causing schema mismatch
+# Timestamp: 2025-11-11 14:30
+# Changes: Simplified prompts query to remove ORDER BY id/created_at
+# Root cause: Production RDS prompts table missing 'id' and 'created_at' columns
+# Solution: Direct SELECT * FROM prompts to restore chat functionality
+# Force deployment trigger - timestamp: 1762835400

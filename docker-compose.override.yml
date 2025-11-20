@@ -1,0 +1,25 @@
+# ============================================
+# DOCKER COMPOSE OVERRIDE - LOCAL DEVELOPMENT
+# ============================================
+# This file is Git-ignored and used for local overrides
+# Uncomment services below to add local volume mounts
+# ============================================
+
+# Uncomment to enable hot-reload for development:
+
+# services:
+#   agent-api:
+#     volumes:
+#       - ./backend/agent-api:/app
+#     environment:
+#       DEBUG: "true"
+#
+#   mcp-server:
+#     volumes:
+#       - ./backend/mcp-server:/app
+#     environment:
+#       DEBUG: "true"
+#
+#   frontend:
+#     volumes:
+#       - ./frontend/src:/app/src

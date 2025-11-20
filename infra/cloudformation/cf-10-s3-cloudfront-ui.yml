@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 static sites (enduser & admin) + CloudFront distributions with OAC'
+Parameters:
+  EnduserDomain:
+    Type: String
+    Default: app.example.com
+  AdminDomain:
+    Type: String
+    Default: admin.example.com
+Resources:
+  S3Enduser:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnduserDomain}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  S3Admin:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AdminDomain}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  OACEnduser:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      Name: !Sub '${EnduserDomain}-oac'
+      OriginAccessControlConfig:
+        Name: !Sub '${EnduserDomain}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  OACAdmin:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      Name: !Sub '${AdminDomain}-oac'
+      OriginAccessControlConfig:
+        Name: !Sub '${AdminDomain}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CFEnduser:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: enduser-origin
+            DomainName: !GetAtt S3Enduser.RegionalDomainName
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref OACEnduser
+        DefaultCacheBehavior:
+          TargetOriginId: enduser-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+        PriceClass: PriceClass_100
+  CFAdmin:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: admin-origin
+            DomainName: !GetAtt S3Admin.RegionalDomainName
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref OACAdmin
+        DefaultCacheBehavior:
+          TargetOriginId: admin-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+        PriceClass: PriceClass_100
+Outputs:
+  EnduserBucket: {Value: !Ref S3Enduser}
+  AdminBucket: {Value: !Ref S3Admin}
+  EnduserCFDomain: {Value: !GetAtt CFEnduser.DomainName}
+  AdminCFDomain: {Value: !GetAtt CFAdmin.DomainName}

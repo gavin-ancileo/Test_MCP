@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira Project Debug Tool</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0052CC;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #0052CC;
+        }
+        .error {
+            border-left-color: #DE350B;
+            background: #FFEBE6;
+        }
+        .success {
+            border-left-color: #00875A;
+            background: #E3FCEF;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            background: #0052CC;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0747A6;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .project-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .project-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            background: white;
+        }
+        .project-card.unexpected {
+            border-color: #DE350B;
+            background: #FFEBE6;
+        }
+        .project-card.active {
+            border-color: #00875A;
+            background: #E3FCEF;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0052CC;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-box {
+            flex: 1;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #0052CC;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Jira Project Debug Tool</h1>
+
+        <div class="section">
+            <h3>Step 1: Enter Your Jira Access Token</h3>
+            <p>Paste your Jira OAuth access token below:</p>
+            <textarea id="tokenInput" rows="3" placeholder="Paste your Jira access token here..."></textarea>
+            <button onclick="testJiraAPI()">🚀 Test Jira API</button>
+            <button onclick="autoDetectToken()">🔍 Auto-Detect Token</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let jiraToken = '';
+        let cloudId = '';
+        let currentUser = null;
+
+        async function autoDetectToken() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="section"><h3>🔍 Searching for token...</h3><div class="loading"></div></div>';
+
+            // Try localStorage
+            try {
+                // Check common localStorage keys
+                const keys = Object.keys(localStorage);
+                const integrationKeys = keys.filter(k =>
+                    k.includes('jira') ||
+                    k.includes('integration') ||
+                    k.includes('auth') ||
+                    k.includes('token')
+                );
+
+                if (integrationKeys.length > 0) {
+                    let found = false;
+                    for (const key of integrationKeys) {
+                        const value = localStorage.getItem(key);
+                        try {
+                            const parsed = JSON.parse(value);
+                            // Look for access_token in parsed object
+                            if (parsed.access_token) {
+                                document.getElementById('tokenInput').value = parsed.access_token;
+                                resultsDiv.innerHTML = `<div class="section success"><h3>✅ Token Found!</h3><p>Found in localStorage key: ${key}</p></div>`;
+                                found = true;
+                                break;
+                            }
+                            // Check if it's an array of integrations
+                            if (Array.isArray(parsed)) {
+                                const jiraIntegration = parsed.find(i => i.provider === 'jira');
+                                if (jiraIntegration && jiraIntegration.access_token) {
+                                    document.getElementById('tokenInput').value = jiraIntegration.access_token;
+                                    resultsDiv.innerHTML = `<div class="section success"><h3>✅ Token Found!</h3><p>Found Jira integration in localStorage</p></div>`;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                            // Not JSON, skip
+                        }
+                    }
+
+                    if (!found) {
+                        resultsDiv.innerHTML = `<div class="section error">
+                            <h3>❌ Token Not Found Automatically</h3>
+                            <p>Found these localStorage keys, but no Jira token:</p>
+                            <pre>${integrationKeys.join('\n')}</pre>
+                            <p>Please paste your token manually in the textarea above.</p>
+                        </div>`;
+                    }
+                } else {
+                    resultsDiv.innerHTML = `<div class="section error">
+                        <h3>❌ No Integration Data Found</h3>
+                        <p>Please make sure you're logged in and Jira is connected.</p>
+                        <p>Then paste your token manually in the textarea above.</p>
+                    </div>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="section error">
+                    <h3>❌ Error</h3>
+                    <p>${error.message}</p>
+                </div>`;
+            }
+        }
+
+        async function testJiraAPI() {
+            jiraToken = document.getElementById('tokenInput').value.trim();
+
+            if (!jiraToken) {
+                alert('Please enter a Jira access token first!');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="section"><h3>⏳ Testing Jira API...</h3><div class="loading"></div></div>';
+
+            try {
+                // Step 1: Get Cloud ID
+                const resourcesResponse = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
+                    headers: {
+                        'Authorization': `Bearer ${jiraToken}`
+                    }
+                });
+
+                if (!resourcesResponse.ok) {
+                    throw new Error(`Failed to get Jira resources: ${resourcesResponse.status}`);
+                }
+
+                const resources = await resourcesResponse.json();
+                if (!resources || resources.length === 0) {
+                    throw new Error('No Jira sites found');
+                }
+
+                cloudId = resources[0].id;
+                const siteName = resources[0].name;
+                const siteUrl = resources[0].url;
+
+                // Step 2: Get Current User
+                const userResponse = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`, {
+                    headers: {
+                        'Authorization': `Bearer ${jiraToken}`
+                    }
+                });
+
+                if (!userResponse.ok) {
+                    throw new Error(`Failed to get user info: ${userResponse.status}`);
+                }
+
+                currentUser = await userResponse.json();
+
+                // Step 3: Get ALL projects (OLD method)
+                const oldProjectsResponse = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project`, {
+                    headers: {
+                        'Authorization': `Bearer ${jiraToken}`
+                    }
+                });
+
+                const oldProjects = await oldProjectsResponse.json();
+
+                // Step 4: Get projects with user's issues (NEW method)
+                const jqlResponse = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search?` + new URLSearchParams({
+                    jql: 'assignee = currentUser() OR reporter = currentUser()',
+                    maxResults: 1000,
+                    fields: 'project,summary,status'
+                }), {
+                    headers: {
+                        'Authorization': `Bearer ${jiraToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const jqlData = await jqlResponse.json();
+                const issues = jqlData.issues || [];
+
+                // Extract unique projects from issues
+                const activeProjectsMap = new Map();
+                issues.forEach(issue => {
+                    const project = issue.fields?.project;
+                    if (project && project.key) {
+                        if (!activeProjectsMap.has(project.key)) {
+                            activeProjectsMap.set(project.key, {
+                                key: project.key,
+                                name: project.name,
+                                issueCount: 0
+                            });
+                        }
+                        activeProjectsMap.get(project.key).issueCount++;
+                    }
+                });
+
+                const activeProjects = Array.from(activeProjectsMap.values());
+
+                // Identify unexpected projects
+                const activeKeys = new Set(activeProjects.map(p => p.key));
+                const unexpectedProjects = oldProjects.filter(p => !activeKeys.has(p.key));
+
+                // Display results
+                displayResults(siteName, siteUrl, currentUser, oldProjects, activeProjects, unexpectedProjects);
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="section error">
+                    <h3>❌ Error Testing Jira API</h3>
+                    <p>${error.message}</p>
+                    <p>Make sure your token is valid and has not expired.</p>
+                </div>`;
+            }
+        }
+
+        function displayResults(siteName, siteUrl, user, oldProjects, activeProjects, unexpectedProjects) {
+            const resultsDiv = document.getElementById('results');
+
+            const html = `
+                <div class="section success">
+                    <h3>✅ Connected to Jira</h3>
+                    <p><strong>Site:</strong> ${siteName}</p>
+                    <p><strong>URL:</strong> ${siteUrl}</p>
+                    <p><strong>User:</strong> ${user.displayName} (${user.emailAddress})</p>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-number">${oldProjects.length}</div>
+                        <div class="stat-label">All Projects (OLD)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${activeProjects.length}</div>
+                        <div class="stat-label">Your Projects (NEW)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${unexpectedProjects.length}</div>
+                        <div class="stat-label">Unexpected Projects</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>✅ Your Active Projects (NEW Method - Correct)</h3>
+                    <p>These are projects where you have issues (assigned or created):</p>
+                    <div class="project-list">
+                        ${activeProjects.map(p => `
+                            <div class="project-card active">
+                                <strong>${p.key}</strong> - ${p.name}
+                                <br><small>Your issues: ${p.issueCount}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                ${unexpectedProjects.length > 0 ? `
+                    <div class="section error">
+                        <h3>⚠️ Unexpected Projects (OLD Method - Wrong)</h3>
+                        <p>These projects appear in the list but you have NO issues in them:</p>
+                        <div class="project-list">
+                            ${unexpectedProjects.map(p => `
+                                <div class="project-card unexpected">
+                                    <strong>${p.key}</strong> - ${p.name}
+                                    <br><small>Type: ${p.projectTypeKey || 'N/A'}</small>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <br>
+                        <p><strong>💡 Why these appear:</strong></p>
+                        <ul>
+                            <li>You have "Browse Projects" permission in Jira workspace</li>
+                            <li>Workspace admin gave you access to see these projects</li>
+                            <li>But you have NO actual issues assigned/created in them</li>
+                        </ul>
+                        <p><strong>✅ Solution:</strong> Use <code>jira_list_my_active_projects</code> function (already deployed in commit 19c3a350)</p>
+                    </div>
+                ` : `
+                    <div class="section success">
+                        <h3>✅ Perfect! No Unexpected Projects</h3>
+                        <p>All visible projects are ones where you have issues.</p>
+                    </div>
+                `}
+
+                <div class="section">
+                    <h3>📊 Full Comparison</h3>
+                    <details>
+                        <summary>Click to see all projects from OLD method</summary>
+                        <pre>${JSON.stringify(oldProjects, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

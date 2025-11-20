@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS PostgreSQL for prompts and n8n'
+Parameters:
+  VpcId: {Type: String}
+  PrivateSubnet1: {Type: String}
+  PrivateSubnet2: {Type: String}
+  DBName: {Type: String, Default: prompts}
+  MasterUsername: {Type: String, Default: masteruser}
+  MasterPassword: {Type: String, NoEcho: true}
+Resources:
+  RDSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS ingress from ECS
+      VpcId: !Ref VpcId
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: private subnets
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+
+  PostgresDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: '15.5'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      StorageType: gp3
+      DBName: !Ref DBName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: [!Ref RDSSG]
+      PubliclyAccessible: false
+      DeletionProtection: false
+Outputs:
+  DBEndpoint: {Value: !GetAtt PostgresDB.Endpoint.Address}
+  RDSSecurityGroupId: {Value: !Ref RDSSG}

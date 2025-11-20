@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAP Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .api-status {
+            margin-top: 15px;
+            font-size: 12px;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tab {
+            padding: 15px 30px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #6c757d;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .tab:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .panel {
+            display: none;
+        }
+        
+        .panel.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .form-group textarea {
+            min-height: 150px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #f56565;
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        .btn-info {
+            background: #4299e1;
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        .alert {
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .alert.show {
+            display: block;
+        }
+        
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+        
+        .alert-info {
+            background: #bee5eb;
+            color: #2c5282;
+            border: 1px solid #90cdf4;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #f7fafc;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        tr:hover {
+            background: #f7fafc;
+        }
+        
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #a0aec0;
+        }
+        
+        .output {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            padding: 15px;
+            min-height: 200px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        
+        .debug-info {
+            background: #fef5e7;
+            border: 1px solid #f39c12;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-family: monospace;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .test-btn {
+            background: #3182ce;
+            color: white;
+            padding: 8px 15px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AAP Prompt Management System</h1>
+            <p>Manage and test your AI prompts</p>
+            <div class="api-status">
+                <div>API: https://btjl2wxpwraof2lt64yjjvjvbe0rwbjn.lambda-url.ap-southeast-1.on.aws</div>
+                <div>Models: https://ngt2e53h6vwwe2wnu7lpzp62du0mujya.lambda-url.ap-southeast-1.on.aws</div>
+            </div>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" data-tab="create">Create Prompt</button>
+            <button class="tab" data-tab="manage">Manage Prompts</button>
+            <button class="tab" data-tab="test">Test Prompt</button>
+        </div>
+        
+        <div class="content">
+            <div id="alert" class="alert"></div>
+            
+            <div id="debug" class="debug-info">
+                <strong>Debug Console:</strong>
+                <button class="test-btn" onclick="testAPI()">Test API Connection</button>
+                <div id="debugLog">Ready...</div>
+            </div>
+            
+            <!-- Create Panel -->
+            <div id="create" class="panel active">
+                <h2>Create New Prompt</h2>
+                <form id="createForm">
+                    <div class="form-group">
+                        <label>Prompt Code (lowercase, underscore only)</label>
+                        <input type="text" id="promptCode" required pattern="[a-z0-9_]+" placeholder="e.g., test_prompt">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Prompt Name</label>
+                        <input type="text" id="promptName" required placeholder="e.g., Test Prompt">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="promptCategory">
+                            <option value="general">General</option>
+                            <option value="development">Development</option>
+                            <option value="qa">QA</option>
+                            <option value="hr">HR</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Content (use {{variable}} for dynamic values)</label>
+                        <textarea id="promptContent" required placeholder="Enter your prompt content here..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Create Prompt</button>
+                </form>
+            </div>
+            
+            <!-- Manage Panel -->
+            <div id="manage" class="panel">
+                <h2>Manage Prompts</h2>
+                <button onclick="loadPrompts()" class="btn btn-success" style="margin-bottom: 20px;">Refresh</button>
+                <table id="promptsTable">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Category</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="4" class="empty">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Test Panel -->
+            <div id="test" class="panel">
+                <h2>Test Prompt</h2>
+                <div class="form-group">
+                    <label>Select Prompt</label>
+                    <select id="testSelect">
+                        <option value="">-- Select a prompt --</option>
+                    </select>
+                </div>
+                
+                <div id="variableFields"></div>
+                
+                <div class="form-group">
+                    <label>Model</label>
+                    <select id="modelSelect">
+                        <option value="amazon.nova-micro-v1:0">Amazon Nova Micro</option>
+                        <option value="amazon.nova-lite-v1:0">Amazon Nova Lite</option>
+                        <option value="anthropic.claude-v2">Claude v2</option>
+                    </select>
+                </div>
+                
+                <button onclick="runTest()" class="btn btn-primary">Run Test</button>
+                
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>Output</label>
+                    <div id="output" class="output">Ready...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        //var API_URL = 'https://btjl2wxpwraof2lt64yjjvjvbe0rwbjn.lambda-url.ap-southeast-1.on.aws/';
+        const  API_URL = 'https://btjl2wxpwraof2lt64yjjvjvbe0rwbjn.lambda-url.ap-southeast-1.on.aws';
+        const  MODELS_URL = 'https://ngt2e53h6vwwe2wnu7lpzp62du0mujya.lambda-url.ap-southeast-1.on.aws';
+        
+        // State
+        var prompts = [];
+        var currentPrompt = null;
+        
+        // Debug logging
+        function debug(msg) {
+            console.log('[DEBUG]', msg);
+            var log = document.getElementById('debugLog');
+            var time = new Date().toLocaleTimeString();
+            var entry = '[' + time + '] ' + msg + '<br>';
+            log.innerHTML = entry + log.innerHTML;
+            
+            // Keep only last 10 lines
+            var lines = log.innerHTML.split('<br>');
+            if (lines.length > 10) {
+                log.innerHTML = lines.slice(0, 10).join('<br>');
+            }
+        }
+        
+        // Test API Connection
+        function testAPI() {
+            debug('Testing API connection...');
+            
+            // Test with fetch
+            fetch(API_URL + '/health')
+                .then(function(response) {
+                    debug('Health check status: ' + response.status);
+                    return response.text();
+                })
+                .then(function(text) {
+                    debug('Health response: ' + text);
+                    try {
+                        var data = JSON.parse(text);
+                        alert('API Connected!\n' + JSON.stringify(data, null, 2));
+                    } catch(e) {
+                        alert('API Response (not JSON):\n' + text);
+                    }
+                })
+                .catch(function(error) {
+                    debug('Health check error: ' + error.message);
+                    alert('API Error: ' + error.message + '\n\nTry opening the API URL directly in browser to check CORS');
+                });
+        }
+        
+        // Show alert
+        function showAlert(message, type) {
+            var alert = document.getElementById('alert');
+            alert.className = 'alert alert-' + type + ' show';
+            alert.textContent = message;
+            setTimeout(function() {
+                alert.className = 'alert';
+            }, 5000);
+        }
+        
+        // Tab switching
+        var tabs = document.querySelectorAll('.tab');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].addEventListener('click', function() {
+                var tabName = this.getAttribute('data-tab');
+                
+                // Update tabs
+                var allTabs = document.querySelectorAll('.tab');
+                for (var j = 0; j < allTabs.length; j++) {
+                    allTabs[j].classList.remove('active');
+                }
+                this.classList.add('active');
+                
+                // Update panels
+                var panels = document.querySelectorAll('.panel');
+                for (var j = 0; j < panels.length; j++) {
+                    panels[j].classList.remove('active');
+                }
+                document.getElementById(tabName).classList.add('active');
+                
+                // Load data
+                if (tabName === 'manage') {
+                    loadPrompts();
+                } else if (tabName === 'test') {
+                    loadTestPrompts();
+                }
+                
+                debug('Switched to tab: ' + tabName);
+            });
+        }
+        
+        // Create form submit
+        document.getElementById('createForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            var data = {
+                code: document.getElementById('promptCode').value,
+                name: document.getElementById('promptName').value,
+                category: document.getElementById('promptCategory').value,
+                content: document.getElementById('promptContent').value,
+                description: 'Created from dashboard',
+                arguments: []
+            };
+            
+            debug('Creating prompt: ' + JSON.stringify(data));
+            
+            fetch(API_URL + '/api/prompts', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(function(response) {
+                debug('Create response status: ' + response.status);
+                return response.text();
+            })
+            .then(function(text) {
+                debug('Create response text: ' + text);
+                try {
+                    var result = JSON.parse(text);
+                    if (result.success || result.prompt_id) {
+                        showAlert('Prompt created successfully!', 'success');
+                        document.getElementById('createForm').reset();
+                        
+                        // Switch to manage tab
+                        document.querySelector('[data-tab="manage"]').click();
+                    } else {
+                        showAlert('Error: ' + (result.error || 'Failed to create'), 'error');
+                    }
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                    showAlert('Server response: ' + text, 'error');
+                }
+            })
+            .catch(function(error) {
+                debug('Create error: ' + error.message);
+                showAlert('Network error: ' + error.message, 'error');
+            });
+        });
+        
+        // Load prompts
+        function loadPrompts() {
+            debug('Loading prompts...');
+            
+            fetch(API_URL + '/api/prompts')
+            .then(function(response) {
+                debug('Load response status: ' + response.status);
+                return response.text();
+            })
+            .then(function(text) {
+                debug('Load response: ' + text.substring(0, 200));
+                try {
+                    var data = JSON.parse(text);
+                    prompts = data.prompts || [];
+                    
+                    var tbody = document.querySelector('#promptsTable tbody');
+                    
+                    if (prompts.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="empty">No prompts found</td></tr>';
+                        return;
+                    }
+                    
+                    var html = '';
+                    for (var i = 0; i < prompts.length; i++) {
+                        var p = prompts[i];
+                        html += '<tr>';
+                        html += '<td>' + p.code + '</td>';
+                        html += '<td>' + (p.name || '') + '</td>';
+                        html += '<td>' + (p.category || '') + '</td>';
+                        html += '<td>';
+                        html += '<button class="btn btn-info" onclick="testPrompt(\'' + p.code + '\')">Test</button> ';
+                        html += '<button class="btn btn-danger" onclick="deletePrompt(\'' + p.code + '\')">Delete</button>';
+                        html += '</td>';
+                        html += '</tr>';
+                    }
+                    tbody.innerHTML = html;
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                    document.querySelector('#promptsTable tbody').innerHTML = 
+                        '<tr><td colspan="4" class="empty">Error loading prompts: ' + e.message + '</td></tr>';
+                }
+            })
+            .catch(function(error) {
+                debug('Load error: ' + error.message);
+                document.querySelector('#promptsTable tbody').innerHTML = 
+                    '<tr><td colspan="4" class="empty">Network error: ' + error.message + '</td></tr>';
+            });
+        }
+        
+        // Delete prompt
+        function deletePrompt(code) {
+            if (!confirm('Delete prompt: ' + code + '?')) return;
+            
+            debug('Deleting prompt: ' + code);
+            
+            fetch(API_URL + '/api/prompts/' + code, {
+                method: 'DELETE'
+            })
+            .then(function(response) {
+                return response.text();
+            })
+            .then(function(text) {
+                debug('Delete response: ' + text);
+                try {
+                    var result = JSON.parse(text);
+                    if (result.success || !result.error) {
+                        showAlert('Prompt deleted!', 'success');
+                        loadPrompts();
+                    } else {
+                        showAlert('Error: ' + (result.error || 'Failed to delete'), 'error');
+                    }
+                } catch(e) {
+                    showAlert('Delete response: ' + text, 'info');
+                    loadPrompts();
+                }
+            })
+            .catch(function(error) {
+                debug('Delete error: ' + error.message);
+                showAlert('Error: ' + error.message, 'error');
+            });
+        }
+        
+        // Test prompt shortcut
+        function testPrompt(code) {
+            document.querySelector('[data-tab="test"]').click();
+            setTimeout(function() {
+                document.getElementById('testSelect').value = code;
+                loadPromptDetails();
+            }, 100);
+        }
+        
+        // Load test prompts
+        function loadTestPrompts() {
+            debug('Loading test prompts...');
+            
+            fetch(API_URL + '/api/prompts')
+            .then(function(response) {
+                return response.text();
+            })
+            .then(function(text) {
+                try {
+                    var data = JSON.parse(text);
+                    var select = document.getElementById('testSelect');
+                    select.innerHTML = '<option value="">-- Select a prompt --</option>';
+                    
+                    var prList = data.prompts || [];
+                    for (var i = 0; i < prList.length; i++) {
+                        var p = prList[i];
+                        var option = document.createElement('option');
+                        option.value = p.code;
+                        option.textContent = p.name || p.code;
+                        select.appendChild(option);
+                    }
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                }
+            })
+            .catch(function(error) {
+                debug('Load test error: ' + error.message);
+            });
+        }
+        
+        // Load prompt details
+        document.getElementById('testSelect').addEventListener('change', loadPromptDetails);
+        
+        function loadPromptDetails() {
+            var code = document.getElementById('testSelect').value;
+            if (!code) {
+                document.getElementById('variableFields').innerHTML = '';
+                return;
+            }
+            
+            debug('Loading prompt details: ' + code);
+            
+            fetch(API_URL + '/api/prompts/' + code)
+            .then(function(response) {
+                return response.text();
+            })
+            .then(function(text) {
+                try {
+                    var prompt = JSON.parse(text);
+                    debug('Loaded prompt: ' + JSON.stringify(prompt).substring(0, 200));
+                    currentPrompt = prompt;
+                    
+                    // Extract variables
+                    var content = prompt.content || prompt.description || '';
+                    var matches = content.match(/\{\{(\w+)\}\}/g) || [];
+                    var variables = [];
+                    var seen = {};
+                    
+                    for (var i = 0; i < matches.length; i++) {
+                        var varName = matches[i].replace(/\{\{|\}\}/g, '');
+                        if (!seen[varName]) {
+                            seen[varName] = true;
+                            variables.push(varName);
+                        }
+                    }
+                    
+                    // Generate input fields
+                    var fields = document.getElementById('variableFields');
+                    if (variables.length > 0) {
+                        var html = '<h4>Variables:</h4>';
+                        for (var i = 0; i < variables.length; i++) {
+                            var v = variables[i];
+                            html += '<div class="form-group">';
+                            html += '<label>' + v + '</label>';
+                            html += '<input type="text" id="var_' + v + '" placeholder="Enter ' + v + '">';
+                            html += '</div>';
+                        }
+                        fields.innerHTML = html;
+                    } else {
+                        fields.innerHTML = '<p style="color: #999;">No variables in this prompt</p>';
+                    }
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                    showAlert('Error loading prompt details', 'error');
+                }
+            })
+            .catch(function(error) {
+                debug('Load details error: ' + error.message);
+                showAlert('Failed to load prompt details', 'error');
+            });
+        }
+        
+        // Run test
+        function runTest() {
+            if (!currentPrompt) {
+                showAlert('Please select a prompt first', 'error');
+                return;
+            }
+            
+            debug('Running test...');
+            
+            // Get content and replace variables
+            var content = currentPrompt.content || currentPrompt.description || '';
+            
+            // Replace all variables
+            var inputs = document.querySelectorAll('#variableFields input');
+            for (var i = 0; i < inputs.length; i++) {
+                var input = inputs[i];
+                var varName = input.id.replace('var_', '');
+                var value = input.value;
+                content = content.split('{{' + varName + '}}').join(value);
+            }
+            
+            var model = document.getElementById('modelSelect').value;
+            
+            debug('Prompt: ' + content.substring(0, 100) + '...');
+            debug('Model: ' + model);
+            
+            document.getElementById('output').textContent = 'Running test...';
+            
+            fetch(MODELS_URL, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    prompt: content,
+                    model: model,
+                    max_tokens: 1000,
+                    temperature: 0.7
+                })
+            })
+            .then(function(response) {
+                return response.text();
+            })
+            .then(function(text) {
+                debug('Test response: ' + text.substring(0, 200));
+                try {
+                    var result = JSON.parse(text);
+                    if (result.success && result.response) {
+                        document.getElementById('output').textContent = result.response;
+                        showAlert('Test completed!', 'success');
+                    } else {
+                        document.getElementById('output').textContent = 'Error: ' + (result.error || JSON.stringify(result));
+                        showAlert('Test failed', 'error');
+                    }
+                } catch(e) {
+                    document.getElementById('output').textContent = 'Response: ' + text;
+                }
+            })
+            .catch(function(error) {
+                debug('Test error: ' + error.message);
+                document.getElementById('output').textContent = 'Error: ' + error.message;
+                showAlert('Test failed: ' + error.message, 'error');
+            });
+        }
+        
+        // Initialize
+        window.addEventListener('load', function() {
+            debug('Dashboard initialized');
+            debug('API: ' + API_URL);
+            debug('Models: ' + MODELS_URL);
+            
+            // Initial load
+            setTimeout(function() {
+                loadPrompts();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

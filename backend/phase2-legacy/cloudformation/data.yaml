@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Phase 2/3-Ready — Data: RDS Postgres + ElastiCache Redis (2 subnets)'
+
+Parameters:
+  ExportPrefix:       { Type: String, Default: aap-poc }
+  DBName:             { Type: String, Default: appdb }
+  DBInstanceClass:    { Type: String, Default: db.t4g.micro }
+  AllocatedStorage:   { Type: Number, Default: 20 }
+  ManageMasterUserPassword:
+    Type: String
+    AllowedValues: ["true","false"]
+    Default: "true"
+
+Conditions:
+  UseRdsAutoPass: !Equals [!Ref ManageMasterUserPassword, "true"]
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: 'POC DB subnets'
+      SubnetIds:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetAId' }
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetBId' }
+
+  Postgres:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      DBName: !Ref DBName
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref AllocatedStorage
+      MasterUsername: app
+      ManageMasterUserPassword: !If [UseRdsAutoPass, true, false]
+      VPCSecurityGroups:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-RdsSgId' }
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      DeletionProtection: false
+
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: 'POC Cache subnets'
+      SubnetIds:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetAId' }
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetBId' }
+
+  Redis:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t4g.micro
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-RedisSgId' }
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+
+Outputs:
+  DbEndpoint:
+    Value: !GetAtt Postgres.Endpoint.Address
+    Export: { Name: !Sub '${ExportPrefix}-DbEndpoint' }
+  DbMasterSecretArn:
+    Value: !If [UseRdsAutoPass, !GetAtt Postgres.MasterUserSecret.SecretArn, ""]
+    Export: { Name: !Sub '${ExportPrefix}-DbMasterSecretArn' }
+  RedisEndpoint:
+    Value: !GetAtt Redis.RedisEndpoint.Address
+    Export: { Name: !Sub '${ExportPrefix}-RedisEndpoint' }

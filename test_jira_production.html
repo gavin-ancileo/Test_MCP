@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira Debug - Production</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #0052CC; }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #0052CC;
+        }
+        .error { border-left-color: #DE350B; background: #FFEBE6; }
+        .success { border-left-color: #00875A; background: #E3FCEF; }
+        .warning { border-left-color: #FF991F; background: #FFF4E6; }
+        button {
+            background: #0052CC;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover { background: #0747A6; }
+        button.copy { background: #00875A; }
+        .project-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .project-card.unexpected {
+            border-color: #DE350B;
+            background: #FFEBE6;
+        }
+        .project-card.active {
+            border-color: #00875A;
+            background: #E3FCEF;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .stat-box {
+            display: inline-block;
+            padding: 20px;
+            margin: 10px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            text-align: center;
+            min-width: 150px;
+        }
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #0052CC;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Jira Project Debug - Production</h1>
+
+        <div class="section warning">
+            <h3>📋 Instructions</h3>
+            <p><strong>1. Open Browser Console:</strong></p>
+            <ul>
+                <li>Press <strong>F12</strong> to open DevTools</li>
+                <li>Go to <strong>Console</strong> tab</li>
+            </ul>
+
+            <p><strong>2. Copy and paste this code into Console:</strong></p>
+            <pre id="scriptCode">(async () => {
+  // Get your current user info
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  console.log('👤 Current user:', user);
+
+  // Get Cognito ID token for authentication
+  const idToken = localStorage.getItem('idToken');
+  if (!idToken) {
+    console.error('❌ Not logged in! Please login first at https://internal.assistant.leacare.ai');
+    return;
+  }
+
+  console.log('✅ Authenticated');
+
+  // Call backend MCP tools
+  const baseUrl = 'https://internal.assistant.leacare.ai';
+
+  try {
+    // Method 1: Get ALL projects (OLD - will show unexpected projects)
+    console.log('\\n📊 Method 1: Getting ALL projects (OLD method)...');
+    const oldResponse = await fetch(`${baseUrl}/mcp-server/tools/jira_list_projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ user_id: user.email })
+    });
+
+    const oldData = await oldResponse.json();
+    console.log('📋 Old method result:', oldData);
+
+    const oldProjects = oldData.projects || [];
+    console.log(`   Total projects (OLD): ${oldProjects.length}`);
+
+    // Method 2: Get only YOUR active projects (NEW - our fix)
+    console.log('\\n📊 Method 2: Getting YOUR active projects (NEW method)...');
+    const newResponse = await fetch(`${baseUrl}/mcp-server/tools/jira_list_my_active_projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ user_id: user.email })
+    });
+
+    const newData = await newResponse.json();
+    console.log('📋 New method result:', newData);
+
+    const newProjects = newData.projects || [];
+    console.log(`   Total projects (NEW): ${newProjects.length}`);
+
+    // Compare
+    const newKeys = new Set(newProjects.map(p => p.key));
+    const unexpectedProjects = oldProjects.filter(p => !newKeys.has(p.key));
+
+    console.log('\\n' + '='.repeat(80));
+    console.log('📊 COMPARISON RESULTS');
+    console.log('='.repeat(80));
+    console.log(`Old method (ALL projects): ${oldProjects.length}`);
+    console.log(`New method (YOUR projects): ${newProjects.length}`);
+    console.log(`Unexpected projects: ${unexpectedProjects.length}`);
+
+    if (unexpectedProjects.length > 0) {
+      console.log('\\n⚠️  UNEXPECTED PROJECTS (You have NO issues in these):');
+      console.log('='.repeat(80));
+      unexpectedProjects.forEach(p => {
+        console.log(`❌ ${p.key} - ${p.name}`);
+      });
+
+      console.log('\\n💡 WHY THIS HAPPENS:');
+      console.log('   1. You have "Browse Projects" permission in Jira workspace');
+      console.log('   2. Workspace admin gave you access to see ALL projects');
+      console.log('   3. But you don\\'t actually work on these projects');
+
+      console.log('\\n✅ SOLUTION:');
+      console.log('   The NEW function filters these out automatically!');
+      console.log('   Use jira_list_my_active_projects instead of jira_list_projects');
+    } else {
+      console.log('\\n✅ Perfect! No unexpected projects found.');
+    }
+
+    console.log('\\n📋 YOUR ACTIVE PROJECTS:');
+    console.log('='.repeat(80));
+    newProjects.forEach(p => {
+      console.log(`✅ ${p.key} - ${p.name}`);
+    });
+
+    // Return results for HTML display
+    return {
+      oldProjects,
+      newProjects,
+      unexpectedProjects,
+      user
+    };
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    return null;
+  }
+})();</pre>
+            <button class="copy" onclick="copyScript()">📋 Copy Script</button>
+
+            <p><strong>3. Press Enter and check the Console output</strong></p>
+        </div>
+
+        <div class="section">
+            <h3>Alternative: Manual Token Method</h3>
+            <p>If you want to see results here instead of Console:</p>
+            <ol>
+                <li>Go to <strong>Application</strong> tab in DevTools</li>
+                <li>Open <strong>Local Storage</strong> → <code>https://internal.assistant.leacare.ai</code></li>
+                <li>Find and copy the <strong>idToken</strong> value</li>
+                <li>Paste it below and click Test</li>
+            </ol>
+
+            <input type="text" id="tokenInput" placeholder="Paste your idToken here" style="width: 100%; padding: 10px; margin: 10px 0; font-family: monospace;">
+            <button onclick="testWithToken()">🚀 Test Jira API</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function copyScript() {
+            const code = document.getElementById('scriptCode').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('✅ Script copied! Paste it into Browser Console (F12 → Console tab)');
+            });
+        }
+
+        async function testWithToken() {
+            const idToken = document.getElementById('tokenInput').value.trim();
+            const resultsDiv = document.getElementById('results');
+
+            if (!idToken) {
+                alert('Please paste your idToken first!');
+                return;
+            }
+
+            resultsDiv.innerHTML = '<div class="section"><h3>⏳ Testing...</h3></div>';
+
+            try {
+                // Get user email from token (JWT decode)
+                const payload = JSON.parse(atob(idToken.split('.')[1]));
+                const userEmail = payload.email || payload.sub;
+
+                console.log('User email:', userEmail);
+
+                const baseUrl = 'https://internal.assistant.leacare.ai';
+
+                // Test old method
+                const oldResponse = await fetch(`${baseUrl}/mcp-server/tools/jira_list_projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({ user_id: userEmail })
+                });
+
+                const oldData = await oldResponse.json();
+                const oldProjects = oldData.projects || [];
+
+                // Test new method
+                const newResponse = await fetch(`${baseUrl}/mcp-server/tools/jira_list_my_active_projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({ user_id: userEmail })
+                });
+
+                const newData = await newResponse.json();
+                const newProjects = newData.projects || [];
+
+                // Compare
+                const newKeys = new Set(newProjects.map(p => p.key));
+                const unexpectedProjects = oldProjects.filter(p => !newKeys.has(p.key));
+
+                // Display results
+                let html = `
+                    <div class="section success">
+                        <h3>✅ Test Complete</h3>
+                        <p>User: ${userEmail}</p>
+                    </div>
+
+                    <div>
+                        <div class="stat-box">
+                            <div class="stat-number">${oldProjects.length}</div>
+                            <div>All Projects (OLD)</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number">${newProjects.length}</div>
+                            <div>Your Projects (NEW)</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number">${unexpectedProjects.length}</div>
+                            <div>Unexpected</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>✅ Your Active Projects (NEW Method)</h3>
+                        ${newProjects.map(p => `
+                            <div class="project-card active">
+                                <strong>${p.key}</strong> - ${p.name}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                if (unexpectedProjects.length > 0) {
+                    html += `
+                        <div class="section error">
+                            <h3>⚠️ Unexpected Projects (OLD Method)</h3>
+                            <p>These projects appear but you have NO issues in them:</p>
+                            ${unexpectedProjects.map(p => `
+                                <div class="project-card unexpected">
+                                    <strong>${p.key}</strong> - ${p.name}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                resultsDiv.innerHTML = html;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="section error"><h3>❌ Error</h3><p>${error.message}</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html>

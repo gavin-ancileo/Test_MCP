@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB Tables for AAP Chat Storage with Bedrock Memory Integration'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: uat
+    AllowedValues:
+      - dev
+      - uat
+      - prod
+    Description: Environment name
+
+Resources:
+  # ============================================
+  # CHAT SESSIONS TABLE
+  # ============================================
+  ChatSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'aap-chat-sessions-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: updated_at
+          AttributeType: N
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-updated_at-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: updated_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: AAP
+        - Key: Component
+          Value: ChatStorage
+
+  # ============================================
+  # CHAT MESSAGES TABLE
+  # ============================================
+  ChatMessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'aap-chat-messages-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: message_id
+          AttributeType: S
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: message_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: session_id-timestamp-index
+          KeySchema:
+            - AttributeName: session_id
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: AAP
+        - Key: Component
+          Value: ChatStorage
+
+  # ============================================
+  # BEDROCK MEMORY REFERENCES TABLE
+  # ============================================
+  BedrockMemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'aap-chat-memory-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: AAP
+        - Key: Component
+          Value: BedrockMemory
+
+  # ============================================
+  # LEGACY CONVERSATIONS TABLE (Keep for backward compatibility)
+  # ============================================
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'aap-conversations-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: conversationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: conversationId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: AAP
+        - Key: Component
+          Value: Legacy
+
+Outputs:
+  ChatSessionsTableName:
+    Description: Chat Sessions Table Name
+    Value: !Ref ChatSessionsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ChatSessionsTable'
+
+  ChatMessagesTableName:
+    Description: Chat Messages Table Name
+    Value: !Ref ChatMessagesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ChatMessagesTable'
+
+  BedrockMemoryTableName:
+    Description: Bedrock Memory References Table Name
+    Value: !Ref BedrockMemoryTable
+    Export:
+      Name: !Sub '${AWS::StackName}-BedrockMemoryTable'
+
+  ConversationsTableName:
+    Description: Legacy Conversations Table Name
+    Value: !Ref ConversationsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ConversationsTable'

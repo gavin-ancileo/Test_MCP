@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AAP Bedrock Agent with Memory and Identity'
+
+Resources:
+  # ============================================
+  # BEDROCK AGENT MEMORY
+  # ============================================
+  
+  AgentMemory:
+    Type: AWS::BedrockAgent::Memory
+    Properties:
+      MemoryName: aap-agent-memory
+      AgentId: RHXKOV2RC6  # Your existing agent ID
+      MemoryConfiguration:
+        Type: SESSION_SUMMARY
+        MaxTokens: 2048
+

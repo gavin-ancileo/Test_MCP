@@ -1,0 +1,70 @@
+{
+  "name": "[TEMPLATE] Test Drive File Counter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mcp-server.aap.local:8001/execute",
+        "method": "POST",
+        "bodyParametersJson": "{\"tool_name\": \"google_drive_list_files\", \"arguments\": {}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Scan Google Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Count files from Google Drive scan\nconst response = $input.first().json;\nconst timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' });\n\n// Check if we have valid response\nlet fileCount = 0;\nlet fileList = '';\n\nif (response && response.files && Array.isArray(response.files)) {\n  fileCount = response.files.length;\n  \n  // Get first 10 files for the list\n  const topFiles = response.files.slice(0, 10);\n  fileList = topFiles.map((file, index) => \n    `${index + 1}. ${file.name || 'Unnamed'}`\n  ).join('\\n');\n  \n  if (response.files.length > 10) {\n    fileList += `\\n... and ${response.files.length - 10} more files`;\n  }\n}\n\n// Build simple email body\nconst emailBody = `\nGoogle Drive Scan Report\n========================\n\nTotal files found: ${fileCount} files\n\n${fileList ? 'Recent files:\\n' + fileList : 'No files found'}\n\nLast scan: ${timestamp}\n\n---\nThis is an automated test scan from your n8n workflow.\n`;\n\nreturn [{\n  json: {\n    fileCount: fileCount,\n    timestamp: timestamp,\n    emailBody: emailBody,\n    emailSubject: `📊 Drive Scan: ${fileCount} files found`\n  }\n}];"
+      },
+      "name": "Count Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "name": "Send Report Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [[{"node": "Scan Google Drive", "type": "main", "index": 0}]]
+    },
+    "Scan Google Drive": {
+      "main": [[{"node": "Count Files", "type": "main", "index": 0}]]
+    },
+    "Count Files": {
+      "main": [[{"node": "Send Report Email", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

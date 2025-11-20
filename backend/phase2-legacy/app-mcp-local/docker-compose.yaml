@@ -1,0 +1,51 @@
+version: "3"
+
+services:
+  # Database
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: aap_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+
+  # MCP Server
+  mcp-server:
+    build: ./backend/mcp-server
+    ports:
+      - "8001:8001"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: aap_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+    depends_on:
+      - postgres
+
+  # Agent API
+  agent-api:
+    build: ./backend/agent-api
+    ports:
+      - "8000:8000"
+    environment:
+      USE_OPENAI: "true"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      MCP_URL: "http://mcp-server:8001"
+      ENVIRONMENT: "${ENVIRONMENT:-local}"
+    depends_on:
+      - mcp-server
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: "http://localhost:8000"
+      VITE_AGENTCORE_URL: "http://localhost:8000/agentcore"
+    depends_on:
+      - agent-api

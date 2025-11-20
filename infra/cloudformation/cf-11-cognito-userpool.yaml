@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AAP Cognito User Pool with RBAC Groups (Admin/User)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: uat
+    AllowedValues: [dev, uat, prod]
+  
+  # OAuth Credentials - Should be loaded from AWS Secrets Manager
+  # Use script to fetch from SM and pass as parameters during deployment
+  GoogleClientId:
+    Type: String
+    Description: 'Google OAuth Client ID (from AAP/{Environment}/mcp-server secret)'
+    NoEcho: false
+  
+  GoogleClientSecret:
+    Type: String
+    Description: 'Google OAuth Client Secret (from AAP/{Environment}/mcp-server secret)'
+    NoEcho: true
+  
+  GitHubClientId:
+    Type: String
+    Description: 'GitHub OAuth Client ID (from AAP/{Environment}/mcp-server secret)'
+    NoEcho: false
+  
+  GitHubClientSecret:
+    Type: String
+    Description: 'GitHub OAuth Client Secret (from AAP/{Environment}/mcp-server secret)'
+    NoEcho: true
+
+Resources:
+  # ============================================
+  # COGNITO USER POOL
+  # ============================================
+  
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'aap-${Environment}-users'
+      
+      # Password Policy
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      
+      # Account Recovery
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      
+      # Auto-verify email
+      AutoVerifiedAttributes:
+        - email
+      
+      # Email Configuration
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      
+      # MFA Configuration (Optional)
+      MfaConfiguration: 'OFF'
+      
+      # User Attributes
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: custom:role
+          AttributeDataType: String
+          Mutable: true
+      
+      # Username Configuration
+      UsernameAttributes:
+        - email
+      
+      UsernameConfiguration:
+        CaseSensitive: false
+      
+      # Tags
+      UserPoolTags:
+        Environment: !Ref Environment
+        Project: AAP
+        ManagedBy: CloudFormation
+  
+  # ============================================
+  # IDENTITY PROVIDERS (SSO)
+  # ============================================
+
+  # Google Identity Provider
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: 'profile email openid'
+      AttributeMapping:
+        email: email
+        name: name
+        username: sub
+
+  # GitHub Identity Provider (OIDC)
+  GitHubIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: GitHub
+      ProviderType: OIDC
+      ProviderDetails:
+        client_id: !Ref GitHubClientId
+        client_secret: !Ref GitHubClientSecret
+        attributes_request_method: 'GET'
+        oidc_issuer: 'https://github.com'
+        authorize_scopes: 'openid user:email'
+        authorize_url: 'https://github.com/login/oauth/authorize'
+        token_url: 'https://github.com/login/oauth/access_token'
+        attributes_url: 'https://api.github.com/user'
+        jwks_uri: 'https://token.actions.githubusercontent.com/.well-known/jwks'
+      AttributeMapping:
+        email: email
+        name: name
+        username: login
+
+  # ============================================
+  # USER POOL CLIENT (for Frontend)
+  # ============================================
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - GoogleIdentityProvider
+      - GitHubIdentityProvider
+    Properties:
+      ClientName: !Sub 'aap-${Environment}-frontend'
+      UserPoolId: !Ref UserPool
+
+      # OAuth Configuration
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+
+      # SSO Identity Providers
+      SupportedIdentityProviders:
+        - Google
+        - GitHub
+        - COGNITO  # Keep native Cognito auth as fallback
+
+      # Callback URLs
+      CallbackURLs:
+        - https://preview-f0vxnvirb4sg.devv.app/callback
+        - http://localhost:3000/callback
+
+      # Logout URLs
+      LogoutURLs:
+        - https://preview-f0vxnvirb4sg.devv.app/
+        - http://localhost:3000/
+
+      # Token Configuration - Extended for development/testing
+      AccessTokenValidity: 24  # 24 hours (max allowed)
+      IdTokenValidity: 24  # 24 hours (max allowed)
+      RefreshTokenValidity: 3650  # 10 years (max allowed)
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+      # Security
+      PreventUserExistenceErrors: ENABLED
+
+      # Read/Write Attributes
+      ReadAttributes:
+        - email
+        - name
+        - custom:role
+      WriteAttributes:
+        - email
+        - name
+  
+  # ============================================
+  # USER POOL DOMAIN
+  # ============================================
+  
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub 'aap-${Environment}-${AWS::AccountId}'
+      UserPoolId: !Ref UserPool
+  
+  # ============================================
+  # RBAC GROUPS
+  # ============================================
+  
+  # Admin Group - Full Access
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admins
+      Description: 'Administrators with full system access'
+      UserPoolId: !Ref UserPool
+      Precedence: 1
+  
+  # User Group - Standard Access
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: users
+      Description: 'Standard users with basic access'
+      UserPoolId: !Ref UserPool
+      Precedence: 10
+  
+  # ============================================
+  # LAMBDA TRIGGERS (Auto-assign role on signup)
+  # ============================================
+  
+  # Lambda Execution Role
+  PreSignUpLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aap-${Environment}-cognito-presignup-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CognitoAdminAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cognito-idp:AdminAddUserToGroup'
+                  - 'cognito-idp:AdminUpdateUserAttributes'
+                Resource: !GetAtt UserPool.Arn
+  
+  # Lambda Function - Auto-assign to 'users' group
+  PreSignUpLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'aap-${Environment}-cognito-presignup'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt PreSignUpLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          
+          cognito = boto3.client('cognito-idp')
+          USER_POOL_ID = os.environ['USER_POOL_ID']
+          
+          # Admin emails (update this list!)
+          ADMIN_EMAILS = [
+              'admin@company.com',
+              'super@admin.com'
+          ]
+          
+          def lambda_handler(event, context):
+              print(f"PreSignUp event: {event}")
+              
+              email = event['request']['userAttributes'].get('email', '')
+              
+              # Auto-confirm user
+              event['response']['autoConfirmUser'] = True
+              event['response']['autoVerifyEmail'] = True
+              
+              # Assign role based on email
+              if email.lower() in ADMIN_EMAILS or 'admin' in email.lower():
+                  # Admin user
+                  event['request']['userAttributes']['custom:role'] = 'admin'
+                  
+                  # Add to admin group (post-confirmation)
+                  try:
+                      cognito.admin_add_user_to_group(
+                          UserPoolId=USER_POOL_ID,
+                          Username=event['userName'],
+                          GroupName='admins'
+                      )
+                      print(f"Added {email} to admins group")
+                  except Exception as e:
+                      print(f"Error adding to group: {e}")
+              else:
+                  # Standard user
+                  event['request']['userAttributes']['custom:role'] = 'user'
+                  
+                  # Add to users group
+                  try:
+                      cognito.admin_add_user_to_group(
+                          UserPoolId=USER_POOL_ID,
+                          Username=event['userName'],
+                          GroupName='users'
+                      )
+                      print(f"Added {email} to users group")
+                  except Exception as e:
+                      print(f"Error adding to group: {e}")
+              
+              return event
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+      Timeout: 10
+  
+  # Lambda Permission for Cognito
+  PreSignUpLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreSignUpLambda
+      Action: 'lambda:InvokeFunction'
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+  
+  # Update User Pool with Lambda Trigger
+  UserPoolLambdaTriggers:
+    Type: AWS::Cognito::UserPool
+    DependsOn: PreSignUpLambdaPermission
+    Properties:
+      UserPoolName: !Sub 'aap-${Environment}-users-with-triggers'
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpLambda.Arn
+
+# ============================================
+# OUTPUTS
+# ============================================
+
+Outputs:
+  UserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+  
+  UserPoolArn:
+    Description: 'Cognito User Pool ARN'
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolArn'
+  
+  UserPoolClientId:
+    Description: 'Cognito User Pool Client ID'
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'
+  
+  UserPoolDomain:
+    Description: 'Cognito User Pool Domain'
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolDomain'
+  
+  AdminGroupName:
+    Description: 'Admin Group Name'
+    Value: !Ref AdminGroup
+  
+  UserGroupName:
+    Description: 'User Group Name'
+    Value: !Ref UserGroup

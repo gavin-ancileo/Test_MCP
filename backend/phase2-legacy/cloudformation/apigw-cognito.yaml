@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Phase-2 — API Gateway (HTTP) with Cognito JWT + VPC Link to ALB
+
+Parameters:
+  ExportPrefix:              { Type: String, Default: aap-poc }
+  ApiName:                   { Type: String, Default: aap-http-api }
+  CognitoDomainPrefix:
+    Type: String
+    Description: Must be globally unique per region (e.g., aap-poc-auth-yourname)
+  AllowedCallbackURLs:       { Type: String, Default: https://example.com/callback }
+  AllowedLogoutURLs:         { Type: String, Default: https://example.com/logout }
+
+Resources:
+  # --- Cognito User Pool + App Client + Hosted UI Domain
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${ExportPrefix}-pool'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${ExportPrefix}-app-client'
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs: [!Ref AllowedCallbackURLs]
+      LogoutURLs:   [!Ref AllowedLogoutURLs]
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
+  # --- HTTP API
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Ref ApiName
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowMethods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS']
+        AllowHeaders: ['*']
+
+  # --- VPC Link (to talk privately to ALB)
+  VpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: !Sub '${ExportPrefix}-vpc-link'
+      SubnetIds:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetAId' }
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetBId' }
+      SecurityGroupIds:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-AlbSgId' }
+
+  # --- Integration to ALB listener: use Listener ARN exported by alb-ecs.yaml
+  IntegrationToAlb:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: HTTP_PROXY
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref VpcLink
+      IntegrationMethod: ANY
+      # For HTTP API + ALB you must use the *listener* ARN as URI
+      IntegrationUri: !ImportValue { 'Fn::Sub': '${ExportPrefix}-AlbListener80Arn' }
+      PayloadFormatVersion: '1.0'
+      TimeoutInMillis: 29000
+
+  # --- Routes
+  RoutePrompts:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'ANY /prompts/{proxy+}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref Authorizer
+      Target: !Sub 'integrations/${IntegrationToAlb}'
+
+  RouteDb:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'ANY /db/{proxy+}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref Authorizer
+      Target: !Sub 'integrations/${IntegrationToAlb}'
+
+  # --- Cognito JWT Authorizer (fixed: include Name + required fields)
+  Authorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      Name: !Sub '${ExportPrefix}-jwt-auth'
+      AuthorizerType: JWT
+      IdentitySource:
+        - '$request.header.Authorization'
+      JwtConfiguration:
+        Audience:
+          - !Ref UserPoolClient
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+    DependsOn: [UserPoolClient]
+
+  # --- Stage
+  DefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: '$default'
+      AutoDeploy: true
+
+Outputs:
+  ApiEndpoint:
+    Value: !GetAtt HttpApi.ApiEndpoint
+    Export:
+      Name: !Sub '${ExportPrefix}-ApiEndpoint'
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoLoginUrl:
+    Description: Hosted UI login URL (useful for manual tests)
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com/login?response_type=code&client_id=${UserPoolClient}&redirect_uri=${AllowedCallbackURLs}'

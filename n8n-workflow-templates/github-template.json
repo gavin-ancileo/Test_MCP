@@ -1,0 +1,34 @@
+{
+  "name": "[TEMPLATE] GitHub Commit Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github",
+        "responseMode": "onReceived"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "github-webhook"
+    },
+    {
+      "parameters": {},
+      "name": "Process GitHub Event",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "notes": "Replace this with Send Email node or other processing nodes after configuring SMTP credentials in n8n UI"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Process GitHub Event", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["integration:github", "template"]
+}

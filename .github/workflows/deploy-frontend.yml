@@ -1,0 +1,237 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      no-cache:
+        description: 'Build without Docker cache (force fresh build)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: aap/frontend
+  ECS_CLUSTER: aap-cluster
+  ECS_SERVICE: aap-frontend-new
+  ECS_TASK_DEFINITION: aap-frontend-new
+  LOG_GROUP: /ecs/aap-frontend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create CloudWatch Log Group
+        run: |
+          echo "📋 Ensuring CloudWatch log group exists..."
+          aws logs create-log-group \
+            --log-group-name ${{ env.LOG_GROUP }} \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "Log group already exists"
+
+          echo "✅ Log group ready: ${{ env.LOG_GROUP }}"
+
+      # Setup Node for faster npm install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # Cache npm dependencies
+      - name: Cache node modules
+        if: github.event.inputs.no-cache != 'true'
+        uses: actions/cache@v3
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        if: github.event.inputs.no-cache != 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-frontend
+          key: ${{ runner.os }}-buildx-frontend-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-frontend-
+
+      - name: Fetch Frontend Config from Secrets Manager
+        id: fetch-config
+        run: |
+          echo "Fetching frontend configuration from AWS Secrets Manager..."
+
+          # Fetch the secret
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id AAP/prod/frontend-config \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString \
+            --output text)
+
+          # Parse JSON and set as outputs
+          echo "COGNITO_DOMAIN=$(echo $SECRET_JSON | jq -r '.COGNITO_DOMAIN')" >> $GITHUB_OUTPUT
+          echo "COGNITO_CLIENT_ID=$(echo $SECRET_JSON | jq -r '.COGNITO_CLIENT_ID')" >> $GITHUB_OUTPUT
+          echo "COGNITO_USER_POOL_ID=$(echo $SECRET_JSON | jq -r '.COGNITO_USER_POOL_ID')" >> $GITHUB_OUTPUT
+          echo "COGNITO_REGION=$(echo $SECRET_JSON | jq -r '.COGNITO_REGION')" >> $GITHUB_OUTPUT
+          echo "COGNITO_REDIRECT_URI=$(echo $SECRET_JSON | jq -r '.COGNITO_REDIRECT_URI')" >> $GITHUB_OUTPUT
+          echo "API_BASE_URL=$(echo $SECRET_JSON | jq -r '.API_BASE_URL')" >> $GITHUB_OUTPUT
+          echo "AGENTCORE_URL=$(echo $SECRET_JSON | jq -r '.AGENTCORE_URL')" >> $GITHUB_OUTPUT
+          echo "ENVIRONMENT=$(echo $SECRET_JSON | jq -r '.ENVIRONMENT')" >> $GITHUB_OUTPUT
+
+          echo "Configuration fetched successfully from Secrets Manager"
+
+      - name: Clean dist folder
+        run: |
+          echo "🧹 Removing any cached dist folder..."
+          rm -rf frontend/dist
+          echo "✅ Clean build environment ready"
+
+      - name: Build and Push Frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd frontend
+
+          # Determine cache flags
+          if [ "${{ github.event.inputs.no-cache }}" == "true" ]; then
+            echo "🔨 Building WITHOUT cache (fresh build)"
+            CACHE_FLAGS="--no-cache"
+          else
+            echo "🔨 Building WITH cache"
+            CACHE_FLAGS="--cache-from=type=local,src=/tmp/.buildx-cache-frontend --cache-to=type=local,dest=/tmp/.buildx-cache-frontend-new,mode=max"
+          fi
+
+          # Build with configuration from Secrets Manager
+          docker buildx build \
+            $CACHE_FLAGS \
+            --build-arg VITE_COGNITO_DOMAIN=${{ steps.fetch-config.outputs.COGNITO_DOMAIN }} \
+            --build-arg VITE_COGNITO_CLIENT_ID=${{ steps.fetch-config.outputs.COGNITO_CLIENT_ID }} \
+            --build-arg VITE_COGNITO_USER_POOL_ID=${{ steps.fetch-config.outputs.COGNITO_USER_POOL_ID }} \
+            --build-arg VITE_COGNITO_REGION=${{ steps.fetch-config.outputs.COGNITO_REGION }} \
+            --build-arg VITE_COGNITO_REDIRECT_URI=${{ steps.fetch-config.outputs.COGNITO_REDIRECT_URI }} \
+            --build-arg VITE_API_BASE_URL=${{ steps.fetch-config.outputs.API_BASE_URL }} \
+            --build-arg VITE_AGENTCORE_URL=${{ steps.fetch-config.outputs.AGENTCORE_URL }} \
+            --build-arg VITE_ENABLE_GITHUB_INTEGRATION=true \
+            --build-arg VITE_ENABLE_JIRA_INTEGRATION=true \
+            --build-arg VITE_ENVIRONMENT=${{ steps.fetch-config.outputs.ENVIRONMENT }} \
+            --tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest \
+            --push \
+            --file Dockerfile \
+            .
+
+          # Update cache (only if using cache)
+          if [ "${{ github.event.inputs.no-cache }}" != "true" ]; then
+            rm -rf /tmp/.buildx-cache-frontend
+            mv /tmp/.buildx-cache-frontend-new /tmp/.buildx-cache-frontend
+          fi
+
+      - name: Get Current Task Definition
+        id: get-task-def
+        run: |
+          echo "📋 Getting current task definition..."
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEFINITION }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def.json
+
+          # Remove fields that can't be used in registration
+          cat task-def.json | jq 'del(
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .requiresAttributes,
+            .compatibilities,
+            .registeredAt,
+            .registeredBy
+          )' > task-def-clean.json
+
+          echo "✅ Task definition prepared"
+
+      - name: Update Task Definition with New Image
+        id: update-task-def
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "🔄 Updating task definition with new image..."
+
+          # Update image in task definition
+          NEW_IMAGE="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}"
+          cat task-def-clean.json | jq \
+            --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' > task-def-new.json
+
+          # Register new task definition
+          NEW_TASK_DEF=$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-new.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "task_def_arn=$NEW_TASK_DEF" >> $GITHUB_OUTPUT
+          echo "✅ New task definition registered: $NEW_TASK_DEF"
+
+      - name: Deploy to ECS
+        run: |
+          echo "🚀 Deploying Frontend with new task definition..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.update-task-def.outputs.task_def_arn }} \
+            --region ${{ env.AWS_REGION }} \
+            --no-cli-pager
+
+          echo "✅ Service updated successfully"
+
+      - name: Wait for Deployment
+        run: |
+          echo "⏳ Waiting for service to stabilize (max 10 min)..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            || echo "⚠️ Wait timed out, check ECS console"
+
+          echo "✅ Deployment command completed - check ECS console for status"
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## 🚀 Frontend Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Deployment failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

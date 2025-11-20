@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Public ALB (listener 443) for n8n UI; TargetGroup uses IP mode for Fargate'
+Parameters:
+  VpcId: {Type: String}
+  PublicSubnet1: {Type: String}
+  PublicSubnet2: {Type: String}
+  ALBSG: {Type: String}
+Resources:
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+      SecurityGroups: [!Ref ALBSG]
+
+  TGn8n:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Port: 5678
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      HealthCheckPath: /healthz
+Outputs:
+  ALBArn: {Value: !Ref ALB}
+  TargetGroupArn: {Value: !Ref TGn8n}

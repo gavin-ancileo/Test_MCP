@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito User Pool with Google IdP + 2 App Clients (enduser, admin) + Hosted UI domain'
+Parameters:
+  DomainPrefix:
+    Type: String
+    Description: 'Cognito Hosted UI domain prefix (unique per region/account)'
+  CallbackBaseEnduser:
+    Type: String
+    Default: 'https://app.example.com'
+  CallbackBaseAdmin:
+    Type: String
+    Default: 'https://admin.example.com'
+  GoogleClientId:
+    Type: String
+    Default: ''
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: OFF
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref DomainPrefix
+      UserPoolId: !Ref UserPool
+
+  EnduserClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs: [ !Sub '${CallbackBaseEnduser}/callback' ]
+      LogoutURLs:   [ !Sub '${CallbackBaseEnduser}/logout' ]
+      SupportedIdentityProviders: [ 'COGNITO', !If [HasGoogle, 'Google', !Ref 'AWS::NoValue'] ]
+
+  AdminClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs: [ !Sub '${CallbackBaseAdmin}/callback' ]
+      LogoutURLs:   [ !Sub '${CallbackBaseAdmin}/logout' ]
+      SupportedIdentityProviders: [ 'COGNITO', !If [HasGoogle, 'Google', !Ref 'AWS::NoValue'] ]
+
+  GoogleProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogle
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId: !Ref UserPool
+      AttributeMapping: { email: email }
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: 'openid email profile'
+
+Conditions:
+  HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
+Outputs:
+  UserPoolId: {Value: !Ref UserPool}
+  EnduserClientId: {Value: !Ref EnduserClient}
+  AdminClientId: {Value: !Ref AdminClient}
+  HostedUIDomain: {Value: !Sub 'https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com'}

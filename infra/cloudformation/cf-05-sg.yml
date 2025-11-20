@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security Groups for ALB, Frontend, AgentCore, MCP Server, n8n, RDS'
+Parameters:
+  VpcId:
+    Type: String
+    Description: VPC ID where security groups will be created
+  RDSSecurityGroupId:
+    Type: String
+    Description: Existing RDS Security Group ID (if exists, otherwise create new)
+    Default: ""
+
+Conditions:
+  CreateRDSSG: !Equals [!Ref RDSSecurityGroupId, ""]
+
+Resources:
+  # ALB Security Group - Public facing
+  ALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Ingress 443 for public ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS from internet
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP from internet (redirect to HTTPS)
+      Tags:
+        - Key: Name
+          Value: AAP-ALB-SG
+
+  # ALB Egress to Frontend
+  ALBToFrontendEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSG
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      DestinationSecurityGroupId: !Ref FrontendSG
+      Description: To Frontend nginx
+
+  # Frontend Security Group
+  FrontendSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Frontend nginx container
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSG
+          Description: From ALB
+      Tags:
+        - Key: Name
+          Value: AAP-Frontend-SG
+
+  # Frontend Egress to Agent API
+  FrontendToAgentEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref FrontendSG
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      DestinationSecurityGroupId: !Ref AgentCoreSG
+      Description: To Agent API
+
+  # Frontend Egress to MCP Server
+  FrontendToMCPEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref FrontendSG
+      IpProtocol: tcp
+      FromPort: 8001
+      ToPort: 8001
+      DestinationSecurityGroupId: !Ref MCPServerSG
+      Description: To MCP Server
+
+  # Agent API Security Group
+  AgentCoreSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AgentCore API tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref FrontendSG
+          Description: From Frontend nginx
+      Tags:
+        - Key: Name
+          Value: AAP-AgentCore-SG
+
+  # Agent Egress to MCP Server
+  AgentToMCPEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AgentCoreSG
+      IpProtocol: tcp
+      FromPort: 8001
+      ToPort: 8001
+      DestinationSecurityGroupId: !Ref MCPServerSG
+      Description: To MCP Server
+
+  # Agent Egress to n8n
+  AgentToN8nEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AgentCoreSG
+      IpProtocol: tcp
+      FromPort: 5678
+      ToPort: 5678
+      DestinationSecurityGroupId: !Ref N8nSG
+      Description: To n8n
+
+  # Agent Egress to Internet (OpenAI API, OAuth providers, Bedrock)
+  AgentToInternetEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AgentCoreSG
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: To OpenAI API, OAuth providers, AWS Bedrock
+
+  # MCP Server Security Group
+  MCPServerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MCP Server tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+          SourceSecurityGroupId: !Ref AgentCoreSG
+          Description: From Agent API
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+          SourceSecurityGroupId: !Ref FrontendSG
+          Description: From Frontend (for /api/prompts)
+      Tags:
+        - Key: Name
+          Value: AAP-MCP-Server-SG
+
+  # MCP Egress to RDS
+  MCPToRDSEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSG
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !If [CreateRDSSG, !Ref RDSPromptsDBSG, !Ref RDSSecurityGroupId]
+      Description: To RDS Prompts PostgreSQL
+
+  # MCP Egress to n8n
+  MCPToN8nEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSG
+      IpProtocol: tcp
+      FromPort: 5678
+      ToPort: 5678
+      DestinationSecurityGroupId: !Ref N8nSG
+      Description: To n8n for workflow triggers
+
+  # MCP Egress to ClaimHub MySQL (via VPC Peering - placeholder CIDR)
+  MCPToClaimHubEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSG
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      CidrIp: 10.0.0.0/8
+      Description: To ClaimHub MySQL (update CIDR after peering setup)
+
+  # MCP Egress to Insurance MySQL (via VPC Peering - placeholder CIDR)
+  MCPToInsuranceEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSG
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      CidrIp: 10.0.0.0/8
+      Description: To Insurance MySQL (update CIDR after peering setup)
+
+  # MCP Egress to Internet (for OAuth callbacks, external APIs)
+  MCPToInternetEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSG
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: To external APIs and OAuth providers
+
+  # n8n Security Group
+  N8nSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: n8n workflow automation tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5678
+          ToPort: 5678
+          SourceSecurityGroupId: !Ref AgentCoreSG
+          Description: From Agent API
+        - IpProtocol: tcp
+          FromPort: 5678
+          ToPort: 5678
+          SourceSecurityGroupId: !Ref MCPServerSG
+          Description: From MCP Server
+        - IpProtocol: tcp
+          FromPort: 5678
+          ToPort: 5678
+          SourceSecurityGroupId: !Ref ALBSG
+          Description: From ALB for webhooks (optional)
+      Tags:
+        - Key: Name
+          Value: AAP-n8n-SG
+
+  # n8n Egress to Internet (for webhooks, external integrations)
+  N8nToInternetEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref N8nSG
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: For webhooks and external integrations
+
+  # RDS Prompts DB Security Group (create if not exists)
+  RDSPromptsDBSG:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateRDSSG
+    Properties:
+      GroupDescription: RDS Prompts PostgreSQL database
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref MCPServerSG
+          Description: From MCP Server only
+      Tags:
+        - Key: Name
+          Value: AAP-RDS-Prompts-SG
+
+Outputs:
+  ALBSG:
+    Value: !Ref ALBSG
+    Description: ALB Security Group ID
+  FrontendSG:
+    Value: !Ref FrontendSG
+    Description: Frontend Security Group ID
+  AgentCoreSG:
+    Value: !Ref AgentCoreSG
+    Description: Agent API Security Group ID
+  MCPServerSG:
+    Value: !Ref MCPServerSG
+    Description: MCP Server Security Group ID
+  N8nSG:
+    Value: !Ref N8nSG
+    Description: n8n Security Group ID
+  RDSPromptsDBSG:
+    Value: !If [CreateRDSSG, !Ref RDSPromptsDBSG, !Ref RDSSecurityGroupId]
+    Description: RDS Prompts DB Security Group ID

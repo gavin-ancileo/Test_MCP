@@ -1,0 +1,29 @@
+{
+  "name": "drive-mcp-server",
+  "version": "1.0.0",
+  "description": "Google Drive MCP server with multi-user OAuth support",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "drive-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "keywords": ["mcp", "google-drive", "oauth"],
+  "author": "Ancileo AI Assistant Platform",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

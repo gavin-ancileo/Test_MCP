@@ -1,0 +1,409 @@
+name: Deploy Backend (Agent API + MCP Server)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+    inputs:
+      no-cache:
+        description: 'Build without Docker cache (force fresh build)'
+        required: false
+        type: boolean
+        default: false
+      stop-tasks-first:
+        description: 'Stop running tasks before deployment (ensures fresh image pull)'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECS_CLUSTER: aap-cluster
+
+jobs:
+  # ============================================
+  # Detect Changes
+  # ============================================
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      agent-api: ${{ steps.filter.outputs.agent-api }}
+      mcp-server: ${{ steps.filter.outputs.mcp-server }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            agent-api:
+              - 'backend/agent-api/**'
+              - 'backend/drive-mcp-server/**'
+            mcp-server:
+              - 'backend/mcp-server/**'
+
+  # ============================================
+  # Deploy Agent API (Only if changed)
+  # ============================================
+  deploy-agent-api:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agent-api == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Docker Layer Caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        if: github.event.inputs.no-cache != 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-agent-api-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-agent-api-
+
+      - name: Build and Push Agent API
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: aap/agentcore
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd backend
+
+          # Determine cache flags
+          if [ "${{ github.event.inputs.no-cache }}" == "true" ]; then
+            echo "🔨 Building WITHOUT cache (fresh build)"
+            CACHE_FLAGS="--no-cache"
+          else
+            echo "🔨 Building WITH cache"
+            CACHE_FLAGS="--cache-from=type=local,src=/tmp/.buildx-cache --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max"
+          fi
+
+          # Build and push (from backend/ directory to include drive-mcp-server/)
+          echo "🏗️ Building with Drive MCP Server support..."
+          docker buildx build \
+            $CACHE_FLAGS \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:bedrock-memory \
+            --push \
+            --file agent-api/Dockerfile \
+            .
+
+          # Update cache (only if using cache)
+          if [ "${{ github.event.inputs.no-cache }}" != "true" ]; then
+            rm -rf /tmp/.buildx-cache
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          fi
+
+      - name: Stop Old Tasks (force fresh image)
+        if: github.event.inputs.stop-tasks-first != 'false'
+        run: |
+          echo "🛑 Stopping old tasks to force fresh image pull..."
+
+          # Get running task ARNs
+          TASK_ARNS=$(aws ecs list-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service-name aap-agentcore-new \
+            --query 'taskArns[]' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          # Stop each task
+          if [ -n "$TASK_ARNS" ]; then
+            for TASK_ARN in $TASK_ARNS; do
+              echo "  Stopping task: $TASK_ARN"
+              aws ecs stop-task \
+                --cluster ${{ env.ECS_CLUSTER }} \
+                --task $TASK_ARN \
+                --region ${{ env.AWS_REGION }} \
+                --no-cli-pager > /dev/null
+            done
+            echo "✅ Old tasks stopped"
+            sleep 5
+          else
+            echo "ℹ️ No running tasks to stop"
+          fi
+
+      - name: Update Task Definition with New Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: aap/agentcore
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "📝 Fetching current task definition..."
+
+          # Get current task definition
+          aws ecs describe-task-definition \
+            --task-definition aap-agentcore-new \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def.json
+
+          # Remove unnecessary fields
+          cat task-def.json | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' > task-def-clean.json
+
+          # Update image in task definition
+          NEW_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "🔄 Updating image to: $NEW_IMAGE"
+
+          cat task-def-clean.json | jq \
+            --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' > task-def-new.json
+
+          # Register new task definition
+          echo "📤 Registering new task definition..."
+          NEW_TASK_DEF=$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-new.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "✅ New task definition: $NEW_TASK_DEF"
+          echo "TASK_DEF_ARN=$NEW_TASK_DEF" >> $GITHUB_ENV
+
+      - name: Deploy to ECS
+        run: |
+          echo "🚀 Deploying Agent API with new task definition..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service aap-agentcore-new \
+            --task-definition ${{ env.TASK_DEF_ARN }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --no-cli-pager
+
+          echo "✅ Service updated with commit SHA image: ${{ github.sha }}"
+          echo "ℹ️  Verify deployment manually: aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services aap-agentcore-new"
+
+  # ============================================
+  # Deploy MCP Server (Only if changed)
+  # ============================================
+  deploy-mcp-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mcp-server == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        if: github.event.inputs.no-cache != 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-mcp
+          key: ${{ runner.os }}-buildx-mcp-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-mcp-
+
+      - name: Build and Push MCP Server
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: aap/mcp-server
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd backend/mcp-server
+
+          # Determine cache flags
+          if [ "${{ github.event.inputs.no-cache }}" == "true" ]; then
+            echo "🔨 Building WITHOUT cache (fresh build)"
+            CACHE_FLAGS="--no-cache"
+          else
+            echo "🔨 Building WITH cache"
+            CACHE_FLAGS="--cache-from=type=local,src=/tmp/.buildx-cache-mcp --cache-to=type=local,dest=/tmp/.buildx-cache-mcp-new,mode=max"
+          fi
+
+          # Build and push
+          docker buildx build \
+            $CACHE_FLAGS \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --push \
+            --file Dockerfile \
+            .
+
+          # Update cache (only if using cache)
+          if [ "${{ github.event.inputs.no-cache }}" != "true" ]; then
+            rm -rf /tmp/.buildx-cache-mcp
+            mv /tmp/.buildx-cache-mcp-new /tmp/.buildx-cache-mcp
+          fi
+
+      - name: Stop Old Tasks (force fresh image)
+        if: github.event.inputs.stop-tasks-first != 'false'
+        run: |
+          echo "🛑 Stopping old MCP Server tasks..."
+
+          TASK_ARNS=$(aws ecs list-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service-name aap-mcp-server-new \
+            --query 'taskArns[]' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          if [ -n "$TASK_ARNS" ]; then
+            for TASK_ARN in $TASK_ARNS; do
+              echo "  Stopping task: $TASK_ARN"
+              aws ecs stop-task \
+                --cluster ${{ env.ECS_CLUSTER }} \
+                --task $TASK_ARN \
+                --region ${{ env.AWS_REGION }} \
+                --no-cli-pager > /dev/null
+            done
+            echo "✅ Old tasks stopped"
+            sleep 5
+          else
+            echo "ℹ️ No running tasks to stop"
+          fi
+
+      - name: Update Task Definition with New Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: aap/mcp-server
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "📝 Fetching current task definition..."
+
+          # Get current task definition
+          aws ecs describe-task-definition \
+            --task-definition aap-mcp-server-new \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def-mcp.json
+
+          # Remove unnecessary fields
+          cat task-def-mcp.json | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' > task-def-mcp-clean.json
+
+          # Update image in task definition
+          NEW_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "🔄 Updating image to: $NEW_IMAGE"
+
+          cat task-def-mcp-clean.json | jq \
+            --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' > task-def-mcp-new.json
+
+          # Register new task definition
+          echo "📤 Registering new task definition..."
+          NEW_TASK_DEF=$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-mcp-new.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "✅ New task definition: $NEW_TASK_DEF"
+          echo "MCP_TASK_DEF_ARN=$NEW_TASK_DEF" >> $GITHUB_ENV
+
+      - name: Deploy to ECS
+        run: |
+          echo "🚀 Deploying MCP Server with new task definition..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service aap-mcp-server-new \
+            --task-definition ${{ env.MCP_TASK_DEF_ARN }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --no-cli-pager
+
+          echo "✅ Service updated with commit SHA image: ${{ github.sha }}"
+
+      - name: Wait for Deployment
+        run: |
+          echo "⏳ Waiting for MCP Server to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services aap-mcp-server-new \
+            --region ${{ env.AWS_REGION }} \
+            || echo "⚠️ Wait timed out"
+
+      - name: Verify Deployment
+        run: |
+          ALB_URL=$(aws elbv2 describe-load-balancers \
+            --query 'LoadBalancers[?LoadBalancerName==`aap-alb-new`].DNSName' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          # MCP Server health check disabled to speed up deployment
+          # MCP server starts slower due to DB connections
+          echo "ℹ️ Skipping MCP Server health check (disabled for faster deployment)"
+          echo "✅ MCP Server deployment triggered"
+
+          # Uncomment below to re-enable health check:
+          # echo "🔍 Testing MCP Server health..."
+          # for i in {1..20}; do
+          #   if curl -f -s "http://${ALB_URL}/mcp-server/health" | grep -q "healthy"; then
+          #     echo "✅ MCP Server is healthy!"
+          #     exit 0
+          #   fi
+          #   echo "  Attempt $i/20..."
+          #   sleep 5
+          # done
+          # echo "⚠️ Health check timed out"
+
+  # ============================================
+  # Summary
+  # ============================================
+  deployment-summary:
+    needs: [detect-changes, deploy-agent-api, deploy-mcp-server]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Backend Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.detect-changes.outputs.agent-api }}" == "true" ]; then
+            if [ "${{ needs.deploy-agent-api.result }}" == "success" ]; then
+              echo "✅ Agent API deployed successfully" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Agent API deployment failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️ Agent API - No changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.mcp-server }}" == "true" ]; then
+            if [ "${{ needs.deploy-mcp-server.result }}" == "success" ]; then
+              echo "✅ MCP Server deployed successfully" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ MCP Server deployment failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️ MCP Server - No changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY

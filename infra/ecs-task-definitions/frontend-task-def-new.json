@@ -1,0 +1,84 @@
+{
+  "family": "aap-frontend-new",
+  "taskRoleArn": "arn:aws:iam::233693675018:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::233693675018:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "frontend",
+      "image": "233693675018.dkr.ecr.ap-southeast-2.amazonaws.com/aap-ui:latest",
+      "cpu": 0,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [],
+      "secrets": [
+        {
+          "name": "VITE_COGNITO_DOMAIN",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:COGNITO_DOMAIN::"
+        },
+        {
+          "name": "VITE_COGNITO_CLIENT_ID",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:COGNITO_CLIENT_ID::"
+        },
+        {
+          "name": "VITE_COGNITO_USER_POOL_ID",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:COGNITO_USER_POOL_ID::"
+        },
+        {
+          "name": "VITE_COGNITO_REGION",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:COGNITO_REGION::"
+        },
+        {
+          "name": "VITE_COGNITO_REDIRECT_URI",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:COGNITO_REDIRECT_URI::"
+        },
+        {
+          "name": "VITE_API_BASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:API_BASE_URL::"
+        },
+        {
+          "name": "VITE_AGENTCORE_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:AGENTCORE_URL::"
+        },
+        {
+          "name": "VITE_MCP_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:MCP_URL::"
+        },
+        {
+          "name": "VITE_ENVIRONMENT",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:233693675018:secret:AAP/prod/frontend-config-XXXXXX:ENVIRONMENT::"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/aap-frontend-new",
+          "awslogs-region": "ap-southeast-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost/ || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "systemControls": []
+    }
+  ]
+}

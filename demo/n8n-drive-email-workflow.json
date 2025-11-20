@@ -1,0 +1,110 @@
+{
+  "name": "Drive File Notification - Email Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "drive-file-notification",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook - Drive File Created",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "drive-file-webhook",
+      "description": "Triggered when a new file is created in Google Drive"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract file information from webhook payload\nconst fileData = $input.first().json;\n\n// Get file details\nconst fileName = fileData.name || fileData.fileName || 'Unknown File';\nconst fileId = fileData.id || fileData.fileId || '';\nconst createdTime = fileData.createdTime || fileData.created_time || new Date().toISOString();\nconst fileSize = fileData.size || fileData.fileSize || 'N/A';\nconst mimeType = fileData.mimeType || fileData.mime_type || 'N/A';\nconst fileUrl = fileData.webViewLink || fileData.web_view_link || fileData.url || '';\n\n// Get file content (if provided)\nconst fileContent = fileData.content || fileData.fileContent || fileData.textContent || '';\nconst contentPreview = fileContent ? \n  (fileContent.length > 500 ? fileContent.substring(0, 500) + '...' : fileContent) : \n  'No content available';\n\n// Format email content\nconst emailSubject = `📄 New File Created: ${fileName}`;\nconst emailBody = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background-color: #4285f4; color: white; padding: 20px; border-radius: 5px 5px 0 0; }\n    .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }\n    .info-row { margin: 10px 0; }\n    .label { font-weight: bold; color: #555; }\n    .value { color: #333; }\n    .content-preview { background-color: white; padding: 15px; border-left: 4px solid #4285f4; margin-top: 15px; white-space: pre-wrap; font-family: monospace; }\n    .button { display: inline-block; padding: 10px 20px; background-color: #4285f4; color: white; text-decoration: none; border-radius: 5px; margin-top: 15px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h2>📄 New File Created in Google Drive</h2>\n    </div>\n    <div class=\"content\">\n      <div class=\"info-row\">\n        <span class=\"label\">File Name:</span>\n        <span class=\"value\">${fileName}</span>\n      </div>\n      <div class=\"info-row\">\n        <span class=\"label\">Created Time:</span>\n        <span class=\"value\">${new Date(createdTime).toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'full', timeStyle: 'long' })}</span>\n      </div>\n      <div class=\"info-row\">\n        <span class=\"label\">File Size:</span>\n        <span class=\"value\">${fileSize}</span>\n      </div>\n      <div class=\"info-row\">\n        <span class=\"label\">File Type:</span>\n        <span class=\"value\">${mimeType}</span>\n      </div>\n      ${fileUrl ? `<div class=\"info-row\">\n        <a href=\"${fileUrl}\" class=\"button\">Open File in Drive</a>\n      </div>` : ''}\n      <div class=\"content-preview\">\n        <strong>File Content Preview:</strong><br/><br/>\n        ${contentPreview}\n      </div>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    emailSubject,\n    emailBody,\n    fileName,\n    fileId,\n    createdTime,\n    fileSize,\n    mimeType,\n    fileUrl,\n    contentPreview\n  }\n}];"
+      },
+      "id": "code-node",
+      "name": "Format Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "description": "Format file information into email HTML"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMAIL_FROM || 'n8n@example.com' }}",
+        "toEmail": "={{ $env.EMAIL_TO || 'your-email@example.com' }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "html",
+        "message": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "id": "email-node",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP Account"
+        }
+      },
+      "description": "Send email notification"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Email notification sent\", \"fileName\": $json.fileName, \"createdTime\": $json.createdTime } }}"
+      },
+      "id": "response-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "description": "Return success response"
+    }
+  ],
+  "connections": {
+    "Webhook - Drive File Created": {
+      "main": [
+        [
+          {
+            "node": "Format Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Email Content": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["drive", "email", "notification"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
+

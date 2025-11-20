@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auth Flow Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .log { background: #2d2d2d; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .error { color: #f48771; }
+        .success { color: #89d185; }
+        .warning { color: #e5c07b; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #0d0d0d; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Authentication Flow Tester</h1>
+    <p>Base URL: <span id="baseUrl"></span></p>
+
+    <button onclick="testHealthCheck()">1. Test Health Check</button>
+    <button onclick="testWithoutAuth()">2. Test API Without Auth</button>
+    <button onclick="testWithAuth()">3. Test API With Auth</button>
+    <button onclick="checkLocalStorage()">4. Check localStorage</button>
+    <button onclick="clearAll()">Clear Logs</button>
+
+    <div id="logs"></div>
+
+    <script>
+        const API_URL = 'https://aap-alb-new-1908782275.ap-southeast-2.elb.amazonaws.com';
+        const AGENTCORE_URL = API_URL + '/agentcore';
+
+        document.getElementById('baseUrl').textContent = API_URL;
+
+        function log(message, type = 'log') {
+            const div = document.createElement('div');
+            div.className = 'log ' + type;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong> - ${message}`;
+            document.getElementById('logs').appendChild(div);
+            console.log(message);
+        }
+
+        async function testHealthCheck() {
+            log('Testing health check endpoint...', 'warning');
+            try {
+                const response = await fetch(AGENTCORE_URL + '/healthz');
+                const data = await response.json();
+                log(`✓ Health check OK: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                log(`✗ Health check failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testWithoutAuth() {
+            log('Testing /api/prompts WITHOUT Authorization header...', 'warning');
+            try {
+                const url = API_URL + '/api/prompts?user_email=test@example.com';
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                log(`Response status: ${response.status} ${response.statusText}`);
+                if (response.status === 401) {
+                    log('✓ Expected 401 - Authorization required', 'success');
+                } else {
+                    const data = await response.text();
+                    log(`Unexpected response: ${data}`, 'warning');
+                }
+            } catch (error) {
+                log(`✗ Request failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testWithAuth() {
+            log('Testing /api/prompts WITH Authorization header...', 'warning');
+
+            // Get token from localStorage
+            const idToken = localStorage.getItem('id_token');
+
+            if (!idToken) {
+                log('✗ No id_token found in localStorage! Please login first.', 'error');
+                return;
+            }
+
+            log('Found id_token in localStorage', 'success');
+            log(`Token preview: ${idToken.substring(0, 50)}...`);
+
+            try {
+                const url = API_URL + '/api/prompts?user_email=test@example.com';
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    }
+                });
+
+                log(`Response status: ${response.status} ${response.statusText}`);
+
+                if (response.status === 200) {
+                    const data = await response.json();
+                    log(`✓ SUCCESS! Got ${data.prompts?.length || 0} prompts`, 'success');
+                    log(`<pre>${JSON.stringify(data, null, 2).substring(0, 500)}...</pre>`);
+                } else {
+                    const text = await response.text();
+                    log(`Response body: ${text}`, 'warning');
+                }
+            } catch (error) {
+                log(`✗ Request failed: ${error.message}`, 'error');
+            }
+        }
+
+        function checkLocalStorage() {
+            log('Checking localStorage...', 'warning');
+            const keys = ['id_token', 'access_token', 'user', 'devv_user', 'DEVV_CODE_SID'];
+
+            for (const key of keys) {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    const preview = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                    log(`✓ ${key}: ${preview}`, 'success');
+                } else {
+                    log(`✗ ${key}: not found`, 'error');
+                }
+            }
+        }
+
+        function clearAll() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // Auto-run health check on load
+        window.addEventListener('load', () => {
+            log('Page loaded. Ready to test!');
+            testHealthCheck();
+        });
+    </script>
+</body>
+</html>

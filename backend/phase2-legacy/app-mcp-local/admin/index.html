@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAP Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tab {
+            padding: 20px 30px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            color: #6c757d;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .panel {
+            display: none;
+        }
+        
+        .panel.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-group textarea {
+            min-height: 150px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            resize: vertical;
+        }
+        
+        .multi-select {
+            position: relative;
+        }
+        
+        .multi-select-display {
+            min-height: 44px;
+            padding: 8px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+        }
+        
+        .multi-select-display:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .multi-select-tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .multi-select-tag .remove {
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .multi-select-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .multi-select-option:hover {
+            background: #f8f9fa;
+        }
+        
+        .multi-select-option.selected {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            margin: 2px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #f56565;
+            color: white;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        
+        .btn-info {
+            background: #4299e1;
+            color: white;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+        
+        .alert {
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            display: none;
+            font-weight: 500;
+        }
+        
+        .alert.show {
+            display: block;
+        }
+        
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+        
+        .alert-info {
+            background: #bee3f8;
+            color: #2a4365;
+            border: 1px solid #90cdf4;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: #f7fafc;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+        
+        tr:hover {
+            background: #f7fafc;
+        }
+        
+        .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0aec0;
+            font-size: 16px;
+        }
+        
+        .output {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 300px;
+            white-space: pre-wrap;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-y: auto;
+        }
+        
+        .debug-info {
+            background: #fffbf0;
+            border: 2px solid #f6ad55;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: monospace;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .variable-field {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .variable-field label {
+            color: #495057;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .settings-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .settings-section h4 {
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            position: relative;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 90%;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AAP Prompt Management System</h1>
+            <p>AI Prompt Management & Testing Platform</p>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" data-tab="create">Create Prompt</button>
+            <button class="tab" data-tab="manage">Manage Prompts</button>
+            <button class="tab" data-tab="test">Test Prompt</button>
+            <button class="tab" data-tab="settings">Settings</button>
+        </div>
+        
+        <div class="content">
+            <div id="alert" class="alert"></div>
+            
+            <!-- Create Panel -->
+            <div id="create" class="panel active">
+                <h2>Create New Prompt</h2>
+                
+                <form id="createForm">
+                    <div class="form-group">
+                        <label>Prompt Code (lowercase, underscore only)</label>
+                        <input type="text" id="promptCode" required pattern="[a-z0-9_]+" placeholder="e.g., hr_contract_generate">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Prompt Name</label>
+                        <input type="text" id="promptName" required placeholder="e.g., HR Contract Generator">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Categories/Roles (Multi-select)</label>
+                        <div class="multi-select" id="categoriesMultiSelect">
+                            <div class="multi-select-display" tabindex="0">
+                                <span class="placeholder">Select categories and roles...</span>
+                            </div>
+                            <div class="multi-select-dropdown">
+                                <div class="multi-select-option" data-value="hr">HR</div>
+                                <div class="multi-select-option" data-value="dev">Developer</div>
+                                <div class="multi-select-option" data-value="qa">QA Engineer</div>
+                                <div class="multi-select-option" data-value="pm">Project Manager</div>
+                                <div class="multi-select-option" data-value="ba">Business Analyst</div>
+                                <div class="multi-select-option" data-value="tech_lead">Tech Lead</div>
+                                <div class="multi-select-option" data-value="devops">DevOps</div>
+                                <div class="multi-select-option" data-value="finance">Finance</div>
+                                <div class="multi-select-option" data-value="cybersecurity">Cybersecurity</div>
+                                <div class="multi-select-option" data-value="support">Support</div>
+                                <div class="multi-select-option" data-value="admin">Admin</div>
+                                <div class="multi-select-option" data-value="all">All Users</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Output Folder (Google Drive)</label>
+                        <input type="text" id="outputFolder" placeholder="drive://folder/1ViGWBhDzjbNit-oy0YTMaB8PSke8PVrs">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Content (use {{variable}} for dynamic values)</label>
+                        <textarea id="promptContent" required placeholder="Enter your prompt content here...
+
+Example:
+Generate a {{document_type}} for {{client_name}} with the following requirements:
+- Project: {{project_name}}
+- Timeline: {{timeline}}
+- Budget: {{budget}}
+
+Please ensure all regulatory requirements are met."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Create Prompt</button>
+                </form>
+            </div>
+            
+            <!-- Manage Panel -->
+            <div id="manage" class="panel">
+                <h2>Manage Prompts</h2>
+                <button onclick="loadPrompts()" class="btn btn-success" style="margin-bottom: 20px;">Refresh</button>
+                
+                <!-- Edit Modal -->
+                <div id="editModal" class="modal">
+                    <div class="modal-content">
+                        <h3 id="editModalTitle">Edit Prompt</h3>
+                        
+                        <form id="editForm">
+                            <div class="form-group">
+                                <label>Prompt Code (readonly)</label>
+                                <input type="text" id="editCode" readonly style="background: #f5f5f5;">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Prompt Name</label>
+                                <input type="text" id="editName" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Categories/Roles</label>
+                                <div class="multi-select" id="editCategoriesMultiSelect">
+                                    <div class="multi-select-display" tabindex="0">
+                                        <span class="placeholder">Select categories and roles...</span>
+                                    </div>
+                                    <div class="multi-select-dropdown">
+                                        <div class="multi-select-option" data-value="hr">HR</div>
+                                        <div class="multi-select-option" data-value="dev">Developer</div>
+                                        <div class="multi-select-option" data-value="qa">QA Engineer</div>
+                                        <div class="multi-select-option" data-value="pm">Project Manager</div>
+                                        <div class="multi-select-option" data-value="ba">Business Analyst</div>
+                                        <div class="multi-select-option" data-value="tech_lead">Tech Lead</div>
+                                        <div class="multi-select-option" data-value="devops">DevOps</div>
+                                        <div class="multi-select-option" data-value="finance">Finance</div>
+                                        <div class="multi-select-option" data-value="cybersecurity">Cybersecurity</div>
+                                        <div class="multi-select-option" data-value="support">Support</div>
+                                        <div class="multi-select-option" data-value="admin">Admin</div>
+                                        <div class="multi-select-option" data-value="all">All Users</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Output Folder</label>
+                                <input type="text" id="editOutputFolder" placeholder="drive://folder/1ViGWBhDzjbNit-oy0YTMaB8PSke8PVrs">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Content</label>
+                                <textarea id="editContent" required style="min-height: 200px;"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Variables (auto-detected)</label>
+                                <div id="editVariablesDisplay" style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; min-height: 30px;">
+                                    Variables will appear here...
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 20px; text-align: right;">
+                                <button type="button" onclick="closeEditModal()" class="btn btn-secondary" style="margin-right: 10px;">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- View Modal -->
+                <div id="viewModal" class="modal">
+                    <div class="modal-content">
+                        <h3>View Prompt Details</h3>
+                        <div id="viewContent"></div>
+                        <div style="margin-top: 20px; text-align: right;">
+                            <button onclick="closeViewModal()" class="btn btn-secondary">Close</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <table id="promptsTable">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Categories</th>
+                            <th>Variables</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" class="empty">Loading prompts...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Test Panel -->
+            <div id="test" class="panel">
+                <h2>Test Prompt</h2>
+                
+                <div class="form-group">
+                    <label>Select Prompt</label>
+                    <select id="testSelect">
+                        <option value="">-- Select a prompt to test --</option>
+                    </select>
+                </div>
+                
+                <div id="variableFields"></div>
+                
+                <div class="form-group">
+                    <label>AI Model</label>
+                    <select id="modelSelect">
+                        <option value="gpt-4">GPT-4 (Recommended)</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </select>
+                </div>
+                
+                <button onclick="runTest()" class="btn btn-primary">Run Test</button>
+                
+                <div class="form-group" style="margin-top: 30px;">
+                    <label>Output</label>
+                    <div id="output" class="output">Select a prompt and click "Run Test" to see results...</div>
+                </div>
+            </div>
+            
+            <!-- Settings Panel -->
+            <div id="settings" class="panel">
+                <h2>Settings</h2>
+                
+                <div class="settings-section">
+                    <h4>OpenAI Configuration</h4>
+                    <div class="form-group">
+                        <label>OpenAI API Key</label>
+                        <input type="password" id="openaiApiKey" placeholder="sk-..." autocomplete="off">
+                        <small style="color: #6c757d; font-size: 12px;">Your API key is stored locally and never sent to our servers</small>
+                    </div>
+                    
+                    <button onclick="saveSettings()" class="btn btn-success">Save Settings</button>
+                    <button onclick="testApiKey()" class="btn btn-secondary">Test API Key</button>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>Backend Configuration</h4>
+                    <div class="form-group">
+                        <label>Backend API URL</label>
+                        <input type="url" id="backendUrl" value="http://localhost:8000/api" placeholder="http://localhost:8000/api">
+                    </div>
+                    
+                    <button onclick="saveBackendSettings()" class="btn btn-success">Save Backend URL</button>
+                </div>
+                
+                <div class="debug-info">
+                    <strong>Debug Console:</strong>
+                    <button onclick="testBackendConnection()" style="padding: 8px 15px; margin-left: 10px; background: #3182ce; color: white; border: none; border-radius: 4px; cursor: pointer;">Test Backend</button>
+                    <div id="debugLog">System ready...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        var API_URL = localStorage.getItem('backend_url') || 'http://localhost:8000/api';
+        var OPENAI_API_KEY = localStorage.getItem('openai_api_key') || '';
+        
+        // State
+        var prompts = [];
+        var currentPrompt = null;
+        var selectedCategories = [];
+        var editSelectedCategories = [];
+        
+        // Debug logging
+        function debug(msg) {
+            console.log('[DEBUG]', msg);
+            var log = document.getElementById('debugLog');
+            var time = new Date().toLocaleTimeString();
+            var entry = '[' + time + '] ' + msg + '<br>';
+            log.innerHTML = entry + log.innerHTML;
+            
+            var lines = log.innerHTML.split('<br>');
+            if (lines.length > 10) {
+                log.innerHTML = lines.slice(0, 10).join('<br>');
+            }
+        }
+        
+        // Show alert
+        function showAlert(message, type) {
+            var alert = document.getElementById('alert');
+            alert.className = 'alert alert-' + type + ' show';
+            alert.textContent = message;
+            setTimeout(function() {
+                alert.className = 'alert';
+            }, 5000);
+        }
+        
+        // Multi-select functionality
+        function initMultiSelect() {
+            var multiSelect = document.getElementById('categoriesMultiSelect');
+            var display = multiSelect.querySelector('.multi-select-display');
+            var dropdown = multiSelect.querySelector('.multi-select-dropdown');
+            var options = dropdown.querySelectorAll('.multi-select-option');
+            
+            display.addEventListener('click', function() {
+                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+            });
+            
+            document.addEventListener('click', function(e) {
+                if (!multiSelect.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+            
+            options.forEach(function(option) {
+                option.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var value = option.dataset.value;
+                    
+                    if (selectedCategories.indexOf(value) !== -1) {
+                        selectedCategories = selectedCategories.filter(function(cat) { return cat !== value; });
+                        option.classList.remove('selected');
+                    } else {
+                        selectedCategories.push(value);
+                        option.classList.add('selected');
+                    }
+                    
+                    updateMultiSelectDisplay();
+                });
+            });
+        }
+        
+        function updateMultiSelectDisplay() {
+            var display = document.querySelector('.multi-select-display');
+            display.innerHTML = '';
+            
+            if (selectedCategories.length === 0) {
+                display.innerHTML = '<span class="placeholder">Select categories and roles...</span>';
+                return;
+            }
+            
+            selectedCategories.forEach(function(category) {
+                var tag = document.createElement('div');
+                tag.className = 'multi-select-tag';
+                tag.innerHTML = category + ' <span class="remove" onclick="removeCategory(\'' + category + '\')">&times;</span>';
+                display.appendChild(tag);
+            });
+        }
+        
+        function removeCategory(category) {
+            selectedCategories = selectedCategories.filter(function(c) { return c !== category; });
+            var option = document.querySelector('[data-value="' + category + '"]');
+            if (option) option.classList.remove('selected');
+            updateMultiSelectDisplay();
+        }
+        
+        // Edit Multi-select functionality
+        function initEditMultiSelect() {
+            var multiSelect = document.getElementById('editCategoriesMultiSelect');
+            var display = multiSelect.querySelector('.multi-select-display');
+            var dropdown = multiSelect.querySelector('.multi-select-dropdown');
+            var options = dropdown.querySelectorAll('.multi-select-option');
+            
+            display.addEventListener('click', function() {
+                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+            });
+            
+            document.addEventListener('click', function(e) {
+                if (!multiSelect.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+            
+            options.forEach(function(option) {
+                option.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var value = option.dataset.value;
+                    
+                    if (editSelectedCategories.indexOf(value) !== -1) {
+                        editSelectedCategories = editSelectedCategories.filter(function(cat) { return cat !== value; });
+                        option.classList.remove('selected');
+                    } else {
+                        editSelectedCategories.push(value);
+                        option.classList.add('selected');
+                    }
+                    
+                    updateEditMultiSelectDisplay();
+                });
+            });
+        }
+        
+        function updateEditMultiSelectDisplay() {
+            var display = document.querySelector('#editCategoriesMultiSelect .multi-select-display');
+            display.innerHTML = '';
+            
+            if (editSelectedCategories.length === 0) {
+                display.innerHTML = '<span class="placeholder">Select categories and roles...</span>';
+                return;
+            }
+            
+            editSelectedCategories.forEach(function(category) {
+                var tag = document.createElement('div');
+                tag.className = 'multi-select-tag';
+                tag.innerHTML = category + ' <span class="remove" onclick="removeEditCategory(\'' + category + '\')">&times;</span>';
+                display.appendChild(tag);
+            });
+            
+            var options = document.querySelectorAll('#editCategoriesMultiSelect .multi-select-option');
+            options.forEach(function(option) {
+                if (editSelectedCategories.indexOf(option.dataset.value) !== -1) {
+                    option.classList.add('selected');
+                } else {
+                    option.classList.remove('selected');
+                }
+            });
+        }
+        
+        function removeEditCategory(category) {
+            editSelectedCategories = editSelectedCategories.filter(function(c) { return c !== category; });
+            updateEditMultiSelectDisplay();
+        }
+        
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var tabName = this.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+                this.classList.add('active');
+                
+                document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+                document.getElementById(tabName).classList.add('active');
+                
+                if (tabName === 'manage') {
+                    loadPrompts();
+                } else if (tabName === 'test') {
+                    loadTestPrompts();
+                } else if (tabName === 'settings') {
+                    loadSettings();
+                }
+                
+                debug('Switched to tab: ' + tabName);
+            });
+        });
+        
+        // Create form submit
+        document.getElementById('createForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            var data = {
+                code: document.getElementById('promptCode').value,
+                name: document.getElementById('promptName').value,
+                categories: selectedCategories,
+                content: document.getElementById('promptContent').value,
+                output_folder: document.getElementById('outputFolder').value || ''
+            };
+            
+            debug('Creating prompt: ' + JSON.stringify(data));
+            
+            fetch(API_URL + '/prompts', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                debug('Create response: ' + text);
+                showAlert('Prompt created successfully!', 'success');
+                document.getElementById('createForm').reset();
+                selectedCategories = [];
+                updateMultiSelectDisplay();
+                
+                document.querySelector('[data-tab="manage"]').click();
+            })
+            .catch(function(error) {
+                debug('Create error: ' + error.message);
+                showAlert('Error: ' + error.message, 'error');
+            });
+        });
+        
+        // Load prompts
+        function loadPrompts() {
+            debug('Loading prompts...');
+            
+            fetch(API_URL + '/prompts')
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                debug('Load response: ' + text.substring(0, 200));
+                try {
+                    var data = JSON.parse(text);
+                    prompts = data.prompts || [];
+                    
+                    var tbody = document.querySelector('#promptsTable tbody');
+                    
+                    if (prompts.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="empty">No prompts found</td></tr>';
+                        return;
+                    }
+                    
+                    var html = '';
+                    prompts.forEach(function(p) {
+                        var categories = Array.isArray(p.categories) ? p.categories.join(', ') : (p.categories || '');
+                        var variables = Array.isArray(p.variables) ? p.variables.join(', ') : (p.variables || '');
+                        
+                        html += '<tr>';
+                        html += '<td>' + p.code + '</td>';
+                        html += '<td>' + (p.name || '') + '</td>';
+                        html += '<td>' + categories + '</td>';
+                        html += '<td>' + variables + '</td>';
+                        html += '<td>';
+                        html += '<button class="btn btn-info" onclick="viewPrompt(\'' + p.code + '\')" title="View Details">View</button>';
+                        html += '<button class="btn btn-primary" onclick="editPrompt(\'' + p.code + '\')" title="Edit">Edit</button>';
+                        html += '<button class="btn btn-secondary" onclick="duplicatePrompt(\'' + p.code + '\')" title="Duplicate">Copy</button>';
+                        html += '<button class="btn btn-info" onclick="testPrompt(\'' + p.code + '\')" title="Test">Test</button>';
+                        html += '<button class="btn btn-danger" onclick="deletePrompt(\'' + p.code + '\')" title="Delete">Delete</button>';
+                        html += '</td>';
+                        html += '</tr>';
+                    });
+                    tbody.innerHTML = html;
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                    document.querySelector('#promptsTable tbody').innerHTML = 
+                        '<tr><td colspan="5" class="empty">Error loading prompts</td></tr>';
+                }
+            })
+            .catch(function(error) {
+                debug('Load error: ' + error.message);
+                document.querySelector('#promptsTable tbody').innerHTML = 
+                    '<tr><td colspan="5" class="empty">Network error</td></tr>';
+            });
+        }
+        
+        // View Prompt
+        function viewPrompt(code) {
+            var prompt = prompts.find(function(p) { return p.code === code; });
+            if (!prompt) {
+                showAlert('Prompt not found', 'error');
+                return;
+            }
+            
+            var categories = Array.isArray(prompt.categories) ? prompt.categories.join(', ') : prompt.categories;
+            var variables = Array.isArray(prompt.variables) ? prompt.variables.join(', ') : prompt.variables;
+            
+            var content = '<div style="line-height: 1.6;">';
+            content += '<p><strong>Code:</strong> ' + prompt.code + '</p>';
+            content += '<p><strong>Name:</strong> ' + (prompt.name || 'N/A') + '</p>';
+            content += '<p><strong>Categories:</strong> ' + (categories || 'None') + '</p>';
+            content += '<p><strong>Variables:</strong> ' + (variables || 'None') + '</p>';
+            content += '<p><strong>Output Folder:</strong> ' + (prompt.output_folder || 'None') + '</p>';
+            content += '<hr style="margin: 20px 0;">';
+            content += '<p><strong>Content:</strong></p>';
+            content += '<div style="background: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto;">' + prompt.content + '</div>';
+            content += '</div>';
+            
+            document.getElementById('viewContent').innerHTML = content;
+            document.getElementById('viewModal').style.display = 'block';
+        }
+        
+        function closeViewModal() {
+            document.getElementById('viewModal').style.display = 'none';
+        }
+        
+        // Edit Prompt
+        function editPrompt(code) {
+            var prompt = prompts.find(function(p) { return p.code === code; });
+            if (!prompt) {
+                showAlert('Prompt not found', 'error');
+                return;
+            }
+            
+            document.getElementById('editCode').value = prompt.code;
+            document.getElementById('editName').value = prompt.name || '';
+            document.getElementById('editContent').value = prompt.content || '';
+            document.getElementById('editOutputFolder').value = prompt.output_folder || '';
+            
+            editSelectedCategories = Array.isArray(prompt.categories) ? prompt.categories.slice() : [];
+            updateEditMultiSelectDisplay();
+            updateEditVariablesDisplay();
+            
+            document.getElementById('editModalTitle').textContent = 'Edit Prompt: ' + prompt.code;
+            document.getElementById('editModal').style.display = 'block';
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            editSelectedCategories = [];
+        }
+        
+        // Update variables display when content changes
+        function updateEditVariablesDisplay() {
+            var content = document.getElementById('editContent').value;
+            var matches = content.match(/\{\{(\w+)\}\}/g) || [];
+            var variables = [];
+            var seen = {};
+            
+            for (var i = 0; i < matches.length; i++) {
+                var varName = matches[i].replace(/\{\{|\}\}/g, '');
+                if (!seen[varName]) {
+                    seen[varName] = true;
+                    variables.push(varName);
+                }
+            }
+            
+            var display = document.getElementById('editVariablesDisplay');
+            if (variables.length > 0) {
+                display.textContent = variables.join(', ');
+            } else {
+                display.textContent = 'No variables found';
+            }
+        }
+        
+        // Listen for content changes
+        document.getElementById('editContent').addEventListener('input', updateEditVariablesDisplay);
+        
+        // Edit form submission
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            var code = document.getElementById('editCode').value;
+            var updateData = {
+                code: code,
+                name: document.getElementById('editName').value,
+                categories: editSelectedCategories,
+                content: document.getElementById('editContent').value,
+                output_folder: document.getElementById('editOutputFolder').value
+            };
+            
+            debug('Updating prompt: ' + JSON.stringify(updateData));
+            
+            fetch(API_URL + '/prompts/' + code, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updateData)
+            })
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                debug('Update response: ' + text);
+                showAlert('Prompt updated successfully!', 'success');
+                closeEditModal();
+                loadPrompts();
+            })
+            .catch(function(error) {
+                debug('Update error: ' + error.message);
+                showAlert('Error updating prompt: ' + error.message, 'error');
+            });
+        });
+        
+        // Duplicate Prompt
+        function duplicatePrompt(code) {
+            var prompt = prompts.find(function(p) { return p.code === code; });
+            if (!prompt) {
+                showAlert('Prompt not found', 'error');
+                return;
+            }
+            
+            var newCode = window.prompt('Enter new code for duplicated prompt:', code + '_copy');
+            if (!newCode || newCode.trim() === '') {
+                return;
+            }
+            
+            if (prompts.find(function(p) { return p.code === newCode.trim(); })) {
+                showAlert('Prompt with this code already exists', 'error');
+                return;
+            }
+            
+            var duplicateData = {
+                code: newCode.trim(),
+                name: (prompt.name || prompt.code) + ' (Copy)',
+                categories: Array.isArray(prompt.categories) ? prompt.categories : [],
+                content: prompt.content || '',
+                output_folder: prompt.output_folder || ''
+            };
+            
+            fetch(API_URL + '/prompts', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(duplicateData)
+            })
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                debug('Duplicate response: ' + text);
+                showAlert('Prompt duplicated successfully!', 'success');
+                loadPrompts();
+            })
+            .catch(function(error) {
+                debug('Duplicate error: ' + error.message);
+                showAlert('Error duplicating prompt: ' + error.message, 'error');
+            });
+        }
+        
+        // Delete prompt
+        function deletePrompt(code) {
+            if (!window.confirm('Delete prompt: ' + code + '?')) return;
+            
+            debug('Deleting prompt: ' + code);
+            
+            fetch(API_URL + '/prompts/' + code, {
+                method: 'DELETE'
+            })
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                debug('Delete response: ' + text);
+                showAlert('Prompt deleted!', 'success');
+                loadPrompts();
+            })
+            .catch(function(error) {
+                debug('Delete error: ' + error.message);
+                showAlert('Error: ' + error.message, 'error');
+            });
+        }
+        
+        // Test prompt shortcut
+        function testPrompt(code) {
+            document.querySelector('[data-tab="test"]').click();
+            setTimeout(function() {
+                document.getElementById('testSelect').value = code;
+                loadPromptDetails();
+            }, 100);
+        }
+        
+        // Load test prompts
+        function loadTestPrompts() {
+            debug('Loading test prompts...');
+            
+            fetch(API_URL + '/prompts')
+            .then(function(response) { return response.text(); })
+            .then(function(text) {
+                try {
+                    var data = JSON.parse(text);
+                    var select = document.getElementById('testSelect');
+                    select.innerHTML = '<option value="">-- Select a prompt --</option>';
+                    
+                    var prList = data.prompts || [];
+                    prList.forEach(function(p) {
+                        var option = document.createElement('option');
+                        option.value = p.code;
+                        option.textContent = p.name || p.code;
+                        select.appendChild(option);
+                    });
+                } catch(e) {
+                    debug('Parse error: ' + e.message);
+                }
+            })
+            .catch(function(error) {
+                debug('Load test error: ' + error.message);
+            });
+        }
+        
+        // Load prompt details for testing
+        document.getElementById('testSelect').addEventListener('change', loadPromptDetails);
+        
+        function loadPromptDetails() {
+            var code = document.getElementById('testSelect').value;
+            if (!code) {
+                document.getElementById('variableFields').innerHTML = '';
+                return;
+            }
+            
+            debug('Loading prompt details: ' + code);
+            
+            currentPrompt = prompts.find(function(p) { return p.code === code; });
+            if (!currentPrompt) {
+                showAlert('Prompt not found', 'error');
+                return;
+            }
+            
+            var content = currentPrompt.content || '';
+            var matches = content.match(/\{\{(\w+)\}\}/g) || [];
+            var variables = [];
+            var seen = {};
+            
+            for (var i = 0; i < matches.length; i++) {
+                var varName = matches[i].replace(/\{\{|\}\}/g, '');
+                if (!seen[varName]) {
+                    seen[varName] = true;
+                    variables.push(varName);
+                }
+            }
+            
+            var fields = document.getElementById('variableFields');
+            if (variables.length > 0) {
+                var html = '<h4>Variables:</h4>';
+                variables.forEach(function(v) {
+                    html += '<div class="variable-field">';
+                    html += '<label>' + v + '</label>';
+                    html += '<input type="text" id="var_' + v + '" placeholder="Enter ' + v + '">';
+                    html += '</div>';
+                });
+                fields.innerHTML = html;
+            } else {
+                fields.innerHTML = '<p style="color: #999;">No variables in this prompt</p>';
+            }
+        }
+        
+        // Run test with backend + OpenAI
+        function runTest() {
+            if (!currentPrompt) {
+                showAlert('Please select a prompt first', 'error');
+                return;
+            }
+            
+            debug('Running test...');
+            
+            var variables = {};
+            var inputs = document.querySelectorAll('#variableFields input');
+            inputs.forEach(function(input) {
+                var varName = input.id.replace('var_', '');
+                variables[varName] = input.value;
+            });
+            
+            document.getElementById('output').textContent = 'Processing prompt and generating document...';
+            
+            fetch(API_URL + '/test-prompt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    prompt_code: currentPrompt.code,
+                    variables: variables,
+                    generate_document: true
+                })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var output = 'Prompt Test Results:\n\n';
+                    output += 'Prompt: ' + data.prompt_name + '\n\n';
+                    output += 'Generated Content:\n';
+                    output += data.filled_content + '\n\n';
+                    
+                    if (data.document_uploaded && data.document_url) {
+                        output += 'SUCCESS: Document uploaded to Google Drive!\n';
+                        output += 'Drive Link: ' + data.document_url + '\n\n';
+                    } else if (data.drive_error) {
+                        output += 'Content generated but Drive upload failed: ' + data.drive_error + '\n\n';
+                    }
+                    
+                    if (OPENAI_API_KEY) {
+                        output += 'Running AI Analysis...\n';
+                        document.getElementById('output').textContent = output;
+                        
+                        var model = document.getElementById('modelSelect').value;
+                        
+                        fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + OPENAI_API_KEY
+                            },
+                            body: JSON.stringify({
+                                model: model,
+                                messages: [
+                                    {
+                                        role: 'user',
+                                        content: data.filled_content
+                                    }
+                                ],
+                                max_tokens: 1000,
+                                temperature: 0.7
+                            })
+                        })
+                        .then(function(aiResponse) { return aiResponse.json(); })
+                        .then(function(aiData) {
+                            if (aiData.choices && aiData.choices[0]) {
+                                output += '\n' + '='.repeat(50) + '\n';
+                                output += 'AI ANALYSIS RESULTS:\n\n';
+                                output += aiData.choices[0].message.content;
+                                
+                                document.getElementById('output').textContent = output;
+                                showAlert('Test completed with AI analysis!', 'success');
+                            } else if (aiData.error) {
+                                output += '\nAI Analysis Error: ' + aiData.error.message;
+                                document.getElementById('output').textContent = output;
+                                showAlert('Prompt processed, but AI analysis failed', 'info');
+                            }
+                        })
+                        .catch(function(aiError) {
+                            output += '\nAI Analysis Error: ' + aiError.message;
+                            document.getElementById('output').textContent = output;
+                            showAlert('Prompt processed successfully', 'success');
+                        });
+                    } else {
+                        output += 'Add OpenAI API key in Settings for AI analysis';
+                        document.getElementById('output').textContent = output;
+                        showAlert('Prompt test completed!', 'success');
+                    }
+                    
+                } else {
+                    document.getElementById('output').textContent = 'Error: ' + (data.message || 'Unknown error');
+                    showAlert('Test failed', 'error');
+                }
+            })
+            .catch(function(error) {
+                debug('Test error: ' + error.message);
+                document.getElementById('output').textContent = 'Error: ' + error.message;
+                showAlert('Test failed: ' + error.message, 'error');
+            });
+        }
+        
+        // Settings functions
+        function loadSettings() {
+            document.getElementById('openaiApiKey').value = OPENAI_API_KEY;
+            document.getElementById('backendUrl').value = API_URL;
+        }
+        
+        function saveSettings() {
+            OPENAI_API_KEY = document.getElementById('openaiApiKey').value;
+            localStorage.setItem('openai_api_key', OPENAI_API_KEY);
+            showAlert('Settings saved successfully!', 'success');
+            debug('Settings saved');
+        }
+        
+        function saveBackendSettings() {
+            API_URL = document.getElementById('backendUrl').value;
+            localStorage.setItem('backend_url', API_URL);
+            showAlert('Backend URL saved!', 'success');
+            debug('Backend URL updated: ' + API_URL);
+        }
+        
+        function testApiKey() {
+            if (!OPENAI_API_KEY) {
+                showAlert('Please enter an OpenAI API key first', 'error');
+                return;
+            }
+            
+            debug('Testing OpenAI API key...');
+            
+            fetch('https://api.openai.com/v1/models', {
+                headers: {
+                    'Authorization': 'Bearer ' + OPENAI_API_KEY
+                }
+            })
+            .then(function(response) {
+                if (response.ok) {
+                    showAlert('API key is valid!', 'success');
+                    debug('API key test successful');
+                } else {
+                    showAlert('Invalid API key', 'error');
+                    debug('API key test failed');
+                }
+            })
+            .catch(function(error) {
+                showAlert('Error testing API key: ' + error.message, 'error');
+                debug('API key test error: ' + error.message);
+            });
+        }
+        
+        function testBackendConnection() {
+            debug('Testing backend connection...');
+            
+            fetch(API_URL + '/prompts')
+            .then(function(response) {
+                if (response.ok) {
+                    showAlert('Backend connection successful!', 'success');
+                    debug('Backend test successful');
+                } else {
+                    showAlert('Backend connection failed', 'error');
+                    debug('Backend test failed');
+                }
+            })
+            .catch(function(error) {
+                showAlert('Backend error: ' + error.message, 'error');
+                debug('Backend test error: ' + error.message);
+            });
+        }
+        
+        // Initialize
+        window.addEventListener('load', function() {
+            debug('Dashboard initialized');
+            debug('API: ' + API_URL);
+            
+            initMultiSelect();
+            initEditMultiSelect();
+            
+            setTimeout(function() {
+                loadPrompts();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Phase 2/3-Ready — ALB + ECS Fargate (app) with optional SSM/Secrets + autoscaling'
+
+Parameters:
+  ExportPrefix:      { Type: String, Default: aap-poc }
+  ClusterName:       { Type: String, Default: aap-mcp-poc }
+  AppImageUri:       { Type: String, Default: public.ecr.aws/nginx/nginx:stable }
+  AppContainerPort:  { Type: Number, Default: 8080 }
+  DesiredCount:      { Type: Number, Default: 2 }
+  HealthPath:        { Type: String, Default: /health }
+  AssignPublicIp:
+    Type: String
+    AllowedValues: ["ENABLED","DISABLED"]
+    Default: "ENABLED"
+  UseHttps:
+    Type: String
+    AllowedValues: ["true","false"]
+    Default: "false"
+  CertificateArn:    { Type: String, Default: "" }
+
+  # Optional SSM parameter names for env wiring (Phase-3 ready)
+  SsmDatabaseUrlParamName: { Type: String, Default: "" }  # e.g. /aap/app/DATABASE_URL
+  SsmRedisUrlParamName:    { Type: String, Default: "" }  # e.g. /aap/app/REDIS_URL
+
+  EnableAutoScaling:
+    Type: String
+    AllowedValues: ["true","false"]
+    Default: "true"
+  CpuTargetPercent:  { Type: Number, Default: 60 }
+
+Conditions:
+  UseTLS:          !Equals [!Ref UseHttps, "true"]
+  HasDbParam:      !Not [ !Equals [ !Ref SsmDatabaseUrlParamName, "" ] ]
+  HasRedisParam:   !Not [ !Equals [ !Ref SsmRedisUrlParamName, "" ] ]
+  DoScaling:       !Equals [!Ref EnableAutoScaling, "true"]
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub '/ecs/${ClusterName}', RetentionInDays: 7 }
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties: { ClusterName: !Ref ClusterName }
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: [ecs-tasks.amazonaws.com] }, Action: sts:AssumeRole }]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: AllowReadSSMParams
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['ssm:GetParameters','ssm:GetParameter','kms:Decrypt','secretsmanager:GetSecretValue']
+                Resource: '*'
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: [ecs-tasks.amazonaws.com] }, Action: sts:AssumeRole }]
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ClusterName}-task'
+      RequiresCompatibilities: [FARGATE]
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: app
+          Image: !Ref AppImageUri
+          PortMappings: [{ ContainerPort: !Ref AppContainerPort }]
+          Essential: true
+          HealthCheck:
+            Command: ["CMD-SHELL", !Sub "curl -f http://localhost:${AppContainerPort}${HealthPath} || exit 1"]
+            Interval: 10
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 10
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: app
+          Secrets:
+            - !If
+              - HasDbParam
+              - { Name: DATABASE_URL, ValueFrom: !Ref SsmDatabaseUrlParamName }
+              - !Ref "AWS::NoValue"
+            - !If
+              - HasRedisParam
+              - { Name: REDIS_URL,   ValueFrom: !Ref SsmRedisUrlParamName }
+              - !Ref "AWS::NoValue"
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ClusterName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetAId' }
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetBId' }
+      SecurityGroups:
+        - !ImportValue { 'Fn::Sub': '${ExportPrefix}-AlbSgId' }
+
+  TargetGroupApp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !ImportValue { 'Fn::Sub': '${ExportPrefix}-VpcId' }
+      Name: !Sub '${ClusterName}-tg'
+      Protocol: HTTP
+      Port: !Ref AppContainerPort
+      TargetType: ip
+      HealthCheckPath: !Ref HealthPath
+      Matcher: { HttpCode: 200-399 }
+
+  ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroupApp }]
+
+  ListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: UseTLS
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates: [{ CertificateArn: !Ref CertificateArn }]
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroupApp }]
+
+  ServiceApp:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerHTTP
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetAId' }
+            - !ImportValue { 'Fn::Sub': '${ExportPrefix}-PublicSubnetBId' }
+          SecurityGroups:
+            - !ImportValue { 'Fn::Sub': '${ExportPrefix}-EcsSgId' }
+          AssignPublicIp: !Ref AssignPublicIp
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroupApp
+          ContainerName: app
+          ContainerPort: !Ref AppContainerPort
+
+  # Phase-3 ready: Autoscaling on CPU
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Condition: DoScaling
+    Properties:
+      MaxCapacity: 6
+      MinCapacity: 2
+      ResourceId: !Sub service/${Cluster}/${ServiceApp.Name}
+      RoleARN: arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: DoScaling
+    Properties:
+      PolicyName: !Sub '${ClusterName}-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: !Ref CpuTargetPercent
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+
+Outputs:
+  AlbDnsName:          { Value: !GetAtt ALB.DNSName, Export: { Name: !Sub '${ExportPrefix}-AlbDnsName' } }
+  AlbListener80Arn:    { Value: !Ref ListenerHTTP,    Export: { Name: !Sub '${ExportPrefix}-AlbListener80Arn' } }
+  EcsClusterName:      { Value: !Ref Cluster,         Export: { Name: !Sub '${ExportPrefix}-EcsClusterName' } }
+  EcsServiceName:      { Value: !GetAtt ServiceApp.Name, Export: { Name: !Sub '${ExportPrefix}-EcsServiceName' } }

@@ -1,0 +1,148 @@
+/**
+ * =====================================
+ *         UI DESIGN SYSTEM
+ * =====================================
+ * 
+ * Project: AAP Enduser
+ * Type: Enterprise SaaS Application
+ * 
+ * DESIGN PHILOSOPHY
+ * -----------------
+ * Core Principle: Clean, professional, and efficient enterprise interface
+ * Design Style: Modern Minimal with Enterprise Trust
+ * Emotion Goal: Professional confidence and operational clarity
+ * 
+ * COLOR SYSTEM (MUST BE HSL FORMAT)
+ * -------------
+ * Primary: 214 100% 54% - Brand blue (#1B7FFF)
+ * Secondary: 220 25% 20% - Dark gray (#111827)
+ * Success: 142 76% 36% - Status indicators
+ * Warning: 38 92% 50% - Alert states
+ * 
+ * TYPOGRAPHY
+ * ----------
+ * Display: Inter font family for headings
+ * Body: Inter for consistent reading experience
+ * 
+ * INTERACTIONS
+ * ------------
+ * Transitions: 200ms ease-in-out
+ * States: Complete coverage for all interactive elements
+ * ====================================
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 25% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 20%;
+    --primary: 214 100% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 25% 20%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 214 100% 97%;
+    --accent-foreground: 214 100% 54%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 214 100% 54%;
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --chart-1: 214 100% 54%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --radius: 0.75rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 220 9% 46%;
+    --sidebar-primary: 214 100% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 220 25% 20%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 214 100% 54%;
+  }
+
+  .dark {
+    --background: 220 25% 6%;
+    --foreground: 0 0% 98%;
+    --card: 220 25% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 220 25% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 214 100% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 25% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 220 25% 12%;
+    --muted-foreground: 220 9% 63%;
+    --accent: 220 25% 12%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 25% 12%;
+    --input: 220 25% 12%;
+    --ring: 214 100% 54%;
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --chart-1: 214 100% 54%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 220 9% 63%;
+    --sidebar-primary: 214 100% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 25% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 220 25% 12%;
+    --sidebar-ring: 214 100% 54%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .app-container {
+    @apply min-h-screen bg-background;
+  }
+  
+  .hero-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+  }
+  
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-sm border border-white/20;
+  }
+  
+  .loading-spinner {
+    @apply animate-spin rounded-full border-2 border-muted border-t-primary;
+  }
+}

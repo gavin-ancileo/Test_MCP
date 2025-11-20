@@ -1,0 +1,206 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Fargate services for n8n (web + worker)'
+Parameters:
+  ClusterName: {Type: String}
+  VpcId: {Type: String}
+  PrivateSubnet1: {Type: String}
+  PrivateSubnet2: {Type: String}
+  N8nSG: {Type: String}
+  N8nImage: {Type: String, Default: 'docker.n8n.io/n8nio/n8n:latest'}
+  Cpu: {Type: Number, Default: 512}
+  Memory: {Type: Number, Default: 1024}
+  ServiceDiscoveryNamespaceId: {Type: String, Description: 'CloudMap namespace ID for service discovery (aap.local)'}
+  DBHost: {Type: String, Description: 'RDS PostgreSQL endpoint'}
+  DBPort: {Type: String, Default: '5432'}
+  DBName: {Type: String, Default: 'n8n', Description: 'Database name for n8n'}
+  DBUser: {Type: String, Description: 'Database username'}
+  DBPasswordSecretArn: {Type: String, Description: 'ARN of Secrets Manager secret containing DB password (e.g., arn:aws:secretsmanager:region:account:secret:secret-name:DB_PASSWORD::)'}
+Resources:
+  # CloudWatch Log Group
+  N8nLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ClusterName}-n8n'
+      RetentionInDays: 7
+
+  # CloudMap Service Registry for n8n
+  N8nServiceRegistry:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: aap-n8n
+      NamespaceId: !Ref ServiceDiscoveryNamespaceId
+      DnsConfig:
+        NamespaceId: !Ref ServiceDiscoveryNamespaceId
+        DnsRecords:
+          - Type: A
+            TTL: 60
+        RoutingPolicy: MULTIVALUE
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref DBPasswordSecretArn
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+
+  N8nTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      Cpu: !Ref Cpu
+      Memory: !Ref Memory
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: n8n
+          Image: !Ref N8nImage
+          PortMappings: [{ContainerPort: 5678}]
+          Essential: true
+          Environment:
+            - Name: N8N_HOST
+              Value: aap-n8n.aap.local
+            - Name: N8N_PROTOCOL
+              Value: http
+            - Name: N8N_PORT
+              Value: '5678'
+            - Name: WEBHOOK_URL
+              Value: 'http://aap-n8n.aap.local:5678/'
+            # Database configuration
+            - Name: DB_TYPE
+              Value: postgresdb
+            - Name: DB_POSTGRESDB_HOST
+              Value: !Ref DBHost
+            - Name: DB_POSTGRESDB_PORT
+              Value: !Ref DBPort
+            - Name: DB_POSTGRESDB_DATABASE
+              Value: !Ref DBName
+            - Name: DB_POSTGRESDB_USER
+              Value: !Ref DBUser
+            # Authentication configuration - disable basic auth, use API keys instead
+            - Name: N8N_BASIC_AUTH_ACTIVE
+              Value: 'false'
+            # Generic timezone and execution settings
+            - Name: GENERIC_TIMEZONE
+              Value: Asia/Ho_Chi_Minh
+            - Name: EXECUTIONS_PROCESS
+              Value: main
+            - Name: EXECUTIONS_MODE
+              Value: regular
+          Secrets:
+            - Name: DB_POSTGRESDB_PASSWORD
+              ValueFrom: !Ref DBPasswordSecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref N8nLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: n8n
+          HealthCheck:
+            Command: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+  N8nService:
+    Type: AWS::ECS::Service
+    DependsOn: [N8nServiceRegistry]
+    Properties:
+      Cluster: !Ref ClusterName
+      ServiceName: !Sub '${ClusterName}-n8n'
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref N8nTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+          SecurityGroups: [!Ref N8nSG]
+          AssignPublicIp: DISABLED
+      ServiceRegistries:
+        - RegistryArn: !GetAtt N8nServiceRegistry.Arn
+          Port: 5678
+      # No LoadBalancer - internal service only
+
+  N8nWorkerTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      Cpu: !Ref Cpu
+      Memory: !Ref Memory
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: n8n-worker
+          Image: !Ref N8nImage
+          Command: ["worker"]
+          Essential: true
+          Environment:
+            # Database configuration (same as main n8n service)
+            - Name: DB_TYPE
+              Value: postgresdb
+            - Name: DB_POSTGRESDB_HOST
+              Value: !Ref DBHost
+            - Name: DB_POSTGRESDB_PORT
+              Value: !Ref DBPort
+            - Name: DB_POSTGRESDB_DATABASE
+              Value: !Ref DBName
+            - Name: DB_POSTGRESDB_USER
+              Value: !Ref DBUser
+            - Name: GENERIC_TIMEZONE
+              Value: Asia/Ho_Chi_Minh
+            - Name: EXECUTIONS_PROCESS
+              Value: main
+            - Name: EXECUTIONS_MODE
+              Value: regular
+          Secrets:
+            - Name: DB_POSTGRESDB_PASSWORD
+              ValueFrom: !Ref DBPasswordSecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref N8nLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: n8n-worker
+
+  N8nWorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ClusterName
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref N8nWorkerTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+          SecurityGroups: [!Ref N8nSG]
+          AssignPublicIp: DISABLED
+Outputs:
+  N8nServiceName: {Value: !Ref N8nService}
+  N8nWorkerServiceName: {Value: !Ref N8nWorkerService}
+  N8nServiceRegistryArn: {Value: !GetAtt N8nServiceRegistry.Arn}
+  N8nServiceDiscoveryName: {Value: !GetAtt N8nServiceRegistry.Name}

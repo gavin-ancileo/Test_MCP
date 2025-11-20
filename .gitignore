@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Node
+node_modules/
+dist/
+.tmp/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Secrets and credentials (CRITICAL - never commit!)
+infra/secrets/
+**/secrets/
+*.secret.json
+*secret*.json
+credentials*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary debug/fix files
+*_upload.py
+*_upload.sh
+check_*.py
+test_*.py
+setup_*.py
+debug_*.py
+debug_*.html
+*-task-def-*.json
+*.bat
+aws_*.txt
+lambda_deployment.zip
+
+# Documentation files (temporary)
+CLEANUP_*.md
+VERIFICATION_*.md
+LOCAL_*.md
+RDS_*.md
+VPC_*.md
+UPLOAD_*.md
+*_SUMMARY.md
+*_STATUS.md
+*_GUIDE.md
+HUONG-DAN-*.md
+test-*.md
+*-clean.json
+*-fixed.json
+*-secret-updated.json
+*-final.json
+current-task-def.json
+new-task-def.json
+task-env.json
+
+# Keep important files
+!README.md
+!.github/**

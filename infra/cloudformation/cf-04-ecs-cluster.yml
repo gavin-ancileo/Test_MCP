@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Cluster for AgentCore and n8n'
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: aap-cluster
+Outputs:
+  ClusterName: {Value: !Ref Cluster}

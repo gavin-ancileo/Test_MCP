@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECR repositories for AgentCore and n8n'
+Resources:
+  AgentCoreRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: bedrock-agentcore-app
+      ImageScanningConfiguration: {ScanOnPush: true}
+  N8nRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: n8n-app
+      ImageScanningConfiguration: {ScanOnPush: true}
+Outputs:
+  AgentCoreRepoUri: {Value: !GetAtt AgentCoreRepo.RepositoryUri}
+  N8nRepoUri: {Value: !GetAtt N8nRepo.RepositoryUri}

@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC Peering connections for ClaimHub and Insurance databases'
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: AAP VPC ID
+
+  RouteTableId:
+    Type: String
+    Description: AAP VPC Route Table ID (for private subnets)
+
+  ClaimHubVpcId:
+    Type: String
+    Description: ClaimHub VPC ID (where assessment DB resides)
+    Default: ""
+
+  ClaimHubVpcCidr:
+    Type: String
+    Description: ClaimHub VPC CIDR block
+    Default: "10.1.0.0/16"
+
+  ClaimHubVpcRegion:
+    Type: String
+    Description: ClaimHub VPC Region
+    Default: "ap-southeast-1"
+
+  InsuranceVpcId:
+    Type: String
+    Description: Insurance Platform VPC ID
+    Default: ""
+
+  InsuranceVpcCidr:
+    Type: String
+    Description: Insurance Platform VPC CIDR block
+    Default: "10.2.0.0/16"
+
+  InsuranceVpcRegion:
+    Type: String
+    Description: Insurance Platform VPC Region
+    Default: "ap-southeast-1"
+
+Conditions:
+  CreateClaimHubPeering: !Not [!Equals [!Ref ClaimHubVpcId, ""]]
+  CreateInsurancePeering: !Not [!Equals [!Ref InsuranceVpcId, ""]]
+
+Resources:
+  # ============================================
+  # ClaimHub VPC Peering
+  # ============================================
+
+  ClaimHubPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: CreateClaimHubPeering
+    Properties:
+      VpcId: !Ref VpcId
+      PeerVpcId: !Ref ClaimHubVpcId
+      PeerRegion: !Ref ClaimHubVpcRegion
+      Tags:
+        - Key: Name
+          Value: AAP-ClaimHub-Peering
+        - Key: Purpose
+          Value: Access ClaimHub assessment database
+
+  ClaimHubPeeringRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateClaimHubPeering
+    DependsOn: ClaimHubPeeringConnection
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      DestinationCidrBlock: !Ref ClaimHubVpcCidr
+      VpcPeeringConnectionId: !Ref ClaimHubPeeringConnection
+
+  # ============================================
+  # Insurance Platform VPC Peering
+  # ============================================
+
+  InsurancePeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: CreateInsurancePeering
+    Properties:
+      VpcId: !Ref VpcId
+      PeerVpcId: !Ref InsuranceVpcId
+      PeerRegion: !Ref InsuranceVpcRegion
+      Tags:
+        - Key: Name
+          Value: AAP-Insurance-Peering
+        - Key: Purpose
+          Value: Access Insurance platform database
+
+  InsurancePeeringRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateInsurancePeering
+    DependsOn: InsurancePeeringConnection
+    Properties:
+      RouteTableId: !Ref RouteTableId
+      DestinationCidrBlock: !Ref InsuranceVpcCidr
+      VpcPeeringConnectionId: !Ref InsurancePeeringConnection
+
+Outputs:
+  ClaimHubPeeringConnectionId:
+    Condition: CreateClaimHubPeering
+    Value: !Ref ClaimHubPeeringConnection
+    Description: ClaimHub VPC Peering Connection ID
+    Export:
+      Name: !Sub "${AWS::StackName}-ClaimHubPeeringId"
+
+  InsurancePeeringConnectionId:
+    Condition: CreateInsurancePeering
+    Value: !Ref InsurancePeeringConnection
+    Description: Insurance VPC Peering Connection ID
+    Export:
+      Name: !Sub "${AWS::StackName}-InsurancePeeringId"
+
+  PostDeploymentInstructions:
+    Value: !Sub |
+      ========================================
+      VPC PEERING POST-DEPLOYMENT STEPS
+      ========================================
+
+      After this stack is deployed, you MUST complete these manual steps:
+
+      1. ACCEPT PEERING CONNECTIONS (if cross-account):
+         - Login to ClaimHub AWS account
+         - Navigate to VPC > Peering Connections
+         - Find peering connection from AAP (${VpcId})
+         - Click "Actions" > "Accept Request"
+
+         - Repeat for Insurance account
+
+      2. UPDATE REMOTE ROUTE TABLES:
+         - In ClaimHub VPC, add route:
+           Destination: <AAP-VPC-CIDR> (e.g., 172.31.0.0/16)
+           Target: ${ClaimHubPeeringConnection} (peering connection ID)
+
+         - In Insurance VPC, add route:
+           Destination: <AAP-VPC-CIDR>
+           Target: ${InsurancePeeringConnection}
+
+      3. UPDATE REMOTE SECURITY GROUPS:
+         - In ClaimHub DB security group:
+           Add inbound rule: MySQL (3306) from AAP VPC CIDR
+
+         - In Insurance DB security group:
+           Add inbound rule: MySQL (3306) from AAP VPC CIDR
+
+      4. TEST CONNECTIVITY:
+         - Use ECS exec to connect to MCP container:
+           aws ecs execute-command --cluster aap-cluster --task <task-id> --container mcp-server --interactive --command "/bin/bash"
+
+         - Test ClaimHub DB:
+           nc -zv <claimhub-db-host> 3306
+
+         - Test Insurance DB:
+           nc -zv <insurance-db-host> 3306
+
+      5. UPDATE SECRETS MANAGER:
+         - Create secret: AAP/uat/insurance-db
+         - Add keys: INSURANCE_DB_HOST, INSURANCE_DB_PORT, INSURANCE_DB_NAME, INSURANCE_DB_USER, INSURANCE_DB_PASSWORD
+
+      6. UPDATE MCP SERVER TASK ROLE:
+         - Ensure ecsTaskRole has permission:
+           secretsmanager:GetSecretValue on AAP/uat/insurance-db
+
+      ========================================
+    Description: Manual steps required after deployment
